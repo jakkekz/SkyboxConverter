@@ -6,8 +6,8 @@ _Heavily vibe coded with Gemini👌_
 This script:
 - If required converts `.vtf` files to suitable format
 - Sticthes the images together in the right places
-- Optionally generates skybox material
-- Optionally generates moondome material
+- Optionally generates a skybox material
+- Optionally generates a moondome material
 - Optionally removes `.vtf` and `.vmt` if used
 
 ## Tutorial:
