@@ -28,14 +28,14 @@ jobs:
       - name: Build skyboxconverter.py (One-File)
         # Includes the icon, --onefile, and the necessary --hidden-import for vtf2img.
         # This creates 'dist/skyboxconverter.exe'
-        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --name skyboxconverter --icon=icon.ico
+        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --name SkyboxConverter --icon=icon.ico
         
       - name: Upload artifact (Single EXE)
         uses: actions/upload-artifact@v4
         with:
-          name: skyboxconverter-exe
+          name: SkyboxConverter-exe
           # Path points directly to the single .exe file.
-          path: dist/skyboxconverter.exe 
+          path: dist/SkyboxConverter.exe 
 
   release:
     needs: build
@@ -49,7 +49,7 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: skyboxconverter-exe
+          name: SkyboxConverter-exe
           # Download the single .exe file into the 'artifacts' directory
           path: ./artifacts
 
@@ -64,11 +64,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           # Upload the single downloaded .exe file
-          files: ./artifacts/skyboxconverter.exe
+          files: ./artifacts/SkyboxConverter.exe
           tag_name: ${{ env.TAG_NAME }}
           name: SkyboxConverter - Latest Build
           # Set the release as a draft until ready to publish, or keep it set as 'latest'
           draft: false
           prerelease: false
         env:
+
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
