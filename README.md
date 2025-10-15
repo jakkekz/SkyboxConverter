@@ -12,9 +12,9 @@ This script:
 
 ## Tutorial:
 1. Download `SkyboxConverter` from the [latest release](https://github.com/jakkekz/SkyboxConverter/releases/tag/latest)
-2. Place SkyboxConverter.exe inside a new folder with all the skybox images
-3. Run `SkyboxConverter.exe`
-4. Place the outputs inside `YOURADDON/materials/skybox`
+2. Place SkyboxConverter.exe inside a new folder with all the skybox images (_.vtf, .png, .jpg, .tga etc..._)
+4. Run `SkyboxConverter.exe`
+5. Place the outputs inside `YOURADDON/materials/skybox`
 
 <img width="112" height="112" alt="Image" src="https://github.com/user-attachments/assets/6bc1c38d-9330-41fe-9f0f-b7d25b59aabf" />
 
