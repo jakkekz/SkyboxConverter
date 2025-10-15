@@ -1,5 +1,6 @@
 # SkyboxConverter
 Automate the converting of CSGO (or decompiled CS2) skyboxes to a CS2 compatible format.
+
 _Heavily vibe coded with Gemini👌_
 
 <img width="792" height="280" alt="Image" src="https://github.com/user-attachments/assets/33697855-d02f-4757-8356-83c88ecdde8e" />
