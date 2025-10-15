@@ -63,8 +63,6 @@ jobs:
       - name: Create and Upload Release
         uses: softprops/action-gh-release@v2
         with:
-          # CRITICAL FIX: Overwrite the asset if it already exists, resolving the 'already_exists' error.
-          overwrite: true
           # Upload the single downloaded .exe file
           files: ./artifacts/SkyboxConverter.exe
           tag_name: ${{ env.TAG_NAME }}
