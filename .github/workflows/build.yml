@@ -27,7 +27,7 @@ jobs:
 
       - name: Build skyboxconverter.py (One-File)
         # Includes the icon, --onefile, and the necessary --hidden-import for vtf2img.
-        # This creates 'dist/skyboxconverter.exe'
+        # This creates 'dist/SkyboxConverter.exe'
         run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --name SkyboxConverter --icon=icon.ico
         
       - name: Upload artifact (Single EXE)
@@ -63,6 +63,8 @@ jobs:
       - name: Create and Upload Release
         uses: softprops/action-gh-release@v2
         with:
+          # CRITICAL FIX: Overwrite the asset if it already exists, resolving the 'already_exists' error.
+          overwrite: true
           # Upload the single downloaded .exe file
           files: ./artifacts/SkyboxConverter.exe
           tag_name: ${{ env.TAG_NAME }}
@@ -71,5 +73,4 @@ jobs:
           draft: false
           prerelease: false
         env:
-
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
