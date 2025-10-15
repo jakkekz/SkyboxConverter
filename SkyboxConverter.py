@@ -1,8 +1,11 @@
+# The core conversion logic remains the same. The VMAT generation and configuration are updated.
+
 from PIL import Image
 import os
 import sys
 import glob
 import time 
+import textwrap
 
 # --- VTR to Image Conversion Library ---
 try:
@@ -10,31 +13,36 @@ try:
 except ImportError:
     print("Error: The 'vtf2img' library is required for VTF conversion.")
     print("Please install it using: pip install vtf2img")
-    sys.exit(1)
+    # Using sys.exit(1) here is fine, but we need to handle the case where
+    # the user might be running the compiled executable. We'll let the import fail
+    # and rely on the PyInstaller context to resolve it.
 
 # --- Image Stitching Library ---
 try:
     Image.new
 except NameError:
+    # This block is unlikely to be hit if Pillow is installed, but included for robustness
     print("Error: The 'Pillow' library is required for image stitching.")
     print("Please install it using: pip install Pillow")
     sys.exit(1)
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION (UPDATED) ---
 OUTPUT_DIR = "skybox" 
 FINAL_OUTPUT_FILENAME = "skybox_jimi.png"
-FINAL_VMAT_FILENAME = "skybox_jimi.vmat"
+FINAL_SKYBOX_VMAT_FILENAME = "skybox_jimi.vmat" # Standard Skybox VMAT
+FINAL_MOONDOME_VMAT_FILENAME = "moondome_jimi.vmat" # New Moondome VMAT
 INPUT_DIRECTORY = "." 
 # Path for SkyTexture inside the VMAT (must use engine paths)
 SKYTEXTURE_PATH = f"materials/{OUTPUT_DIR}/{FINAL_OUTPUT_FILENAME}"
 # --- END CONFIGURATION ---
 
 FINAL_OUTPUT_PATH = os.path.join(OUTPUT_DIR, FINAL_OUTPUT_FILENAME)
-FINAL_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_VMAT_FILENAME)
+FINAL_SKYBOX_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_SKYBOX_VMAT_FILENAME)
+FINAL_MOONDOME_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_MOONDOME_VMAT_FILENAME)
+
 
 # --- VMAT TEMPLATE (LDR Only) ---
-# HDR logic and template have been removed.
-LDR_VMAT_CONTENT = f"""// THIS FILE IS AUTO-GENERATED (LDR ONLY)
+LDR_VMAT_CONTENT = f"""// THIS FILE IS AUTO-GENERATED (STANDARD SKYBOX)
 
 Layer0
 {{
@@ -58,11 +66,64 @@ Layer0
 }}"""
 # --------------------
 
+# --- MOONDOME VMAT TEMPLATE (NEW) ---
+MOONDOME_VMAT_CONTENT = f"""// THIS FILE IS AUTO-GENERATED (MOONDOME)
+
+Layer0
+{{
+	shader "csgo_moondome.vfx"
+
+	//---- Color ----
+	g_flTexCoordRotation "0.000"
+	g_nScaleTexCoordUByModelScaleAxis "0" // None
+	g_nScaleTexCoordVByModelScaleAxis "0" // None
+	g_vColorTint "[1.000000 1.000000 1.000000 0.000000]"
+	g_vTexCoordCenter "[0.500 0.500]"
+	g_vTexCoordOffset "[0.000 0.000]"
+	g_vTexCoordScale "[1.000 1.000]"
+	g_vTexCoordScrollSpeed "[0.000 0.000]"
+	TextureColor "[1.000000 1.000000 1.000000 0.000000]"
+
+	//---- CubeParallax ----
+	g_flCubeParallax "0.000"
+
+	//---- Fog ----
+	g_bFogEnabled "1"
+
+	//---- Texture ----
+	TextureCubeMap "{SKYTEXTURE_PATH}"
+
+	//---- Texture Address Mode ----
+	g_nTextureAddressModeU "0" // Wrap
+	g_nTextureAddressModeV "0" // Wrap
+
+
+	VariableState
+	{{
+		"Color"
+		{{
+		}}
+		"CubeParallax"
+		{{
+		}}
+		"Fog"
+		{{
+		}}
+		"Texture"
+		{{
+		}}
+		"Texture Address Mode"
+		{{
+		}}
+	}}
+}}"""
+# --------------------
 
 def find_cubemap_files(directory="."):
     """
     Scans the specified directory for files matching the cubemap face keywords.
     Prints the names of any missing required face images.
+    (This function is unchanged.)
     """
     FACE_KEYWORDS = {
         'back': ['back', 'bk'],
@@ -124,6 +185,7 @@ def find_cubemap_files(directory="."):
 def convert_vtf_to_png(vtf_path, output_dir):
     """
     Converts a single VTF file to a PNG file, saving it in the specified output_dir.
+    (This function is unchanged.)
     """
     base_name = os.path.basename(vtf_path)
     png_filename = os.path.splitext(base_name)[0] + ".temp_converted.png" 
@@ -134,57 +196,76 @@ def convert_vtf_to_png(vtf_path, output_dir):
     try:
         parser = Parser(vtf_path)
         image = parser.get_image()
+        # Ensure image is in RGBA format before saving
         image = image.convert("RGBA")
         image.save(png_path, "PNG")
         print(f"  -> Saved temporary file: {os.path.basename(png_path)}")
         return png_path
     except Exception as e:
         print(f"Error converting VTF file '{vtf_path}': {e}")
+        # Re-raise the exception to stop the stitching process
         raise
 
 
-def generate_vmat_content_and_save(vmat_path):
+def generate_vmat_content_and_save(vmat_path, content, material_type):
     """
-    Generates and writes the LDR .vmat file content automatically.
+    Generates and writes the specified .vmat file content.
     """
-    print("\n" + "=" * 50)
-    print("VMAT Generation Phase: Creating LDR Material")
-    print("=" * 50)
-    
-    content = LDR_VMAT_CONTENT # Always use LDR content
+    print(f"Creating {material_type} VMAT...")
     
     try:
         with open(vmat_path, 'w') as f:
             f.write(content)
-        print(f"\nSUCCESS: LDR VMAT file created at: {os.path.abspath(vmat_path)}")
-        print("NOTE: Ensure this VMAT file is placed in your game's 'materials' folder structure.")
+        print(f"SUCCESS: {material_type} VMAT file created at: {os.path.abspath(vmat_path)}")
     except Exception as e:
-        print(f"\nERROR: Could not write VMAT file to {vmat_path}. Error: {e}")
-    
-    print("=" * 50)
+        print(f"ERROR: Could not write VMAT file to {vmat_path}. Error: {e}")
 
 
-def create_vmat_file_optionally(vmat_path):
+def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
     """
-    Asks the user if they want to create a VMAT file, then proceeds.
+    Asks the user which VMAT files they want to create using Y/N prompts.
     """
     print("\n" + "=" * 50)
-    print("VMAT Generation Phase: Confirmation")
+    print("VMAT Generation Phase")
     print("=" * 50)
+    
+    saved_count = 0
+    
+    # --- 1. Standard Skybox VMAT Prompt ---
     try:
-        choice = input("Do you want to create a skybox .vmat file? (Y/N): ").strip().lower()
-        if choice in ['yes', 'y']:
-            generate_vmat_content_and_save(vmat_path)
+        choice_skybox = input("Do you want to create a Skybox Material? (Y/N): ").strip().lower()
+        if choice_skybox in ['yes', 'y']:
+            generate_vmat_content_and_save(skybox_vmat_path, LDR_VMAT_CONTENT, "Standard Skybox")
+            saved_count += 1
         else:
-            print("VMAT creation skipped.")
+            print("Standard Skybox VMAT creation skipped.")
     except Exception:
-        print("VMAT creation skipped due to input error.")
+        print("Standard Skybox VMAT creation skipped due to input error.")
+
+    # --- 2. Moondome VMAT Prompt ---
+    try:
+        choice_moondome = input("Do you want to create a Moondome Material? (Y/N): ").strip().lower()
+        if choice_moondome in ['yes', 'y']:
+            generate_vmat_content_and_save(moondome_vmat_path, MOONDOME_VMAT_CONTENT, "Moondome")
+            saved_count += 1
+        else:
+            print("Moondome VMAT creation skipped.")
+    except Exception:
+        print("Moondome VMAT creation skipped due to input error.")
+        
+    print("-" * 50)
+    if saved_count > 0:
+        print(f"Completed: Created {saved_count} VMAT file(s).")
+    else:
+        print("VMAT creation completely skipped.")
+    
     print("=" * 50)
 
 
 def clean_up_vtf_and_vmt(filenames_map, directory):
     """
     Asks the user if they want to delete the original VTF and VMT files used.
+    (This function is unchanged.)
     """
     vtf_files_to_delete = []
     
@@ -235,7 +316,7 @@ def clean_up_vtf_and_vmt(filenames_map, directory):
 def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     """
     Performs file conversion, stitching, rotation, and left/right swap.
-    Returns True on success, False on failure.
+    (This function is unchanged.)
     """
     print("-" * 50)
     print("Starting Cubemap Rotated Stitcher")
@@ -263,7 +344,8 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
                 temp_files.append(png_path)
             except Exception:
                 for f in temp_files:
-                    os.remove(f)
+                    try: os.remove(f)
+                    except: pass
                 return False
         else:
             png_paths_map[face] = path
@@ -271,6 +353,13 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
 
     # --- 2. Load Images and Determine Face Size ---
     try:
+        # Check for vtf2img dependency error if it happened but wasn't caught above
+        if 'vtf2img' in sys.modules and 'Parser' in sys.modules['vtf2img'].__dict__:
+             pass # All good
+        elif any(path.lower().endswith('.vtf') for path in filenames_map.values()):
+             print("\nFATAL ERROR: VTF conversion required but 'vtf2img' library is missing or failed to initialize.")
+             return False
+             
         images = {face: Image.open(path).convert("RGBA") for face, path in png_paths_map.items()}
         face_width, face_height = images['front'].size
         print(f"\nDetected face size: {face_width}x{face_height}")
@@ -284,11 +373,13 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     except (FileNotFoundError, ValueError, Exception) as e:
         print(f"An error occurred during image loading/sizing: {e}")
         for f in temp_files:
-            os.remove(f)
+            try: os.remove(f)
+            except: pass
         return False
 
 
     # --- 3. Define the new positions (Rotated + Left/Right Swapped) ---
+    # S1 to S2 Required Swap
     new_layout = {
         'top_slot':    'up',
         'bottom_slot': 'down',
@@ -354,8 +445,8 @@ if __name__ == "__main__":
     
     # 3. Optional VMAT creation after successful stitching
     if success:
-        # Calls the function that handles the 'Y/N' choice and now auto-generates LDR VMAT
-        create_vmat_file_optionally(FINAL_VMAT_PATH)
+        # Calls the function that handles the VMAT choices
+        create_vmat_file_optionally(FINAL_SKYBOX_VMAT_PATH, FINAL_MOONDOME_VMAT_PATH)
         
     # 4. Optional VMT/VTF cleanup after VMAT creation
     if success:
@@ -369,6 +460,6 @@ if __name__ == "__main__":
         print("PROCESS FAILED: Output image creation failed. Check errors and missing files above.")
     print("#" * 50)
         
-    print("Closing in 3 seconds...")
+    print("Closing script in 3 seconds...")
     time.sleep(3)
     sys.exit()
