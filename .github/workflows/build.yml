@@ -1,0 +1,74 @@
+name: Build and Release SkyboxConverter
+
+on:
+  push:
+    branches:
+      - main
+  # Optional: Allows manual trigger from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          # Install PyInstaller separately as it's a build tool, not a runtime dependency
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build skyboxconverter.py (One-File)
+        # Includes the icon, --onefile, and the necessary --hidden-import for vtf2img.
+        # This creates 'dist/skyboxconverter.exe'
+        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --name skyboxconverter --icon=icon.ico
+        
+      - name: Upload artifact (Single EXE)
+        uses: actions/upload-artifact@v4
+        with:
+          name: skyboxconverter-exe
+          # Path points directly to the single .exe file.
+          path: dist/skyboxconverter.exe 
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only run the release job if the main branch was pushed to, and the build job succeeded.
+    if: github.ref == 'refs/heads/main' && success()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: skyboxconverter-exe
+          # Download the single .exe file into the 'artifacts' directory
+          path: ./artifacts
+
+      - name: Define Tag Name
+        id: define_tag
+        run: |
+          # Use a simple 'latest' tag for a continuous release
+          TAG_NAME="latest"
+          echo "TAG_NAME=${TAG_NAME}" >> $GITHUB_ENV
+          
+      - name: Create and Upload Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # Upload the single downloaded .exe file
+          files: ./artifacts/skyboxconverter.exe
+          tag_name: ${{ env.TAG_NAME }}
+          name: SkyboxConverter - Latest Build
+          # Set the release as a draft until ready to publish, or keep it set as 'latest'
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

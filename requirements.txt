@@ -1,0 +1,2 @@
+Pillow
+vtf2img
