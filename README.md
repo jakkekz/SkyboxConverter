@@ -6,11 +6,11 @@ _Heavily vibe coded with Gemini👌_
 <img width="792" height="280" alt="Image" src="https://github.com/user-attachments/assets/33697855-d02f-4757-8356-83c88ecdde8e" />
 
 ## This script:
-- If required converts `.vtf` files to suitable format
-- Stitches the images together in the right places
+- If required converts `.vtf` and `.exr` files to a suitable format
+- Stitches the images together in the right places and rotations
 - Optionally generates a skybox material
 - Optionally generates a moondome material
-- Optionally removes `.vtf` and `.vmt` if used
+- Optionally removes source materials
 
 ## Tutorial:
 1. Download `SkyboxConverter.exe` from the [latest release](https://github.com/jakkekz/SkyboxConverter/releases/tag/latest)
