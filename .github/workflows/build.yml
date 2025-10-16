@@ -27,8 +27,9 @@ jobs:
 
       - name: Build skyboxconverter.py (One-File)
         # Includes the icon, --onefile, and the necessary --hidden-import for vtf2img.
+        # ADDED: --collect-all pillow to ensure Pillow (PIL) dependencies are bundled.
         # This creates 'dist/SkyboxConverter.exe'
-        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --name SkyboxConverter --icon=icon.ico
+        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --collect-all pillow --name SkyboxConverter --icon=icon.ico
         
       - name: Upload artifact (Single EXE)
         uses: actions/upload-artifact@v4
