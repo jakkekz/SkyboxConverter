@@ -135,17 +135,17 @@ def convert_exr_to_png(input_file, output_file):
         # Read the EXR file using openexr-numpy
         image_float = imread(input_file)
 
-        # Drop the Alpha channel if it exists and the PNG is meant to be RGB/LDR
+        # Handle channels (convert to RGBA)
         if image_float.shape[2] == 4:
-            # We keep the alpha channel here since the stitching uses RGBA
-            pass
+            pass # Already RGBA
         elif image_float.shape[2] == 3:
             # Add an alpha channel of 1s if only RGB is present
             alpha = np.ones((image_float.shape[0], image_float.shape[1], 1), dtype=image_float.dtype)
             image_float = np.concatenate((image_float, alpha), axis=2)
+        else:
+            raise ValueError(f"EXR file has unexpected channel count: {image_float.shape[2]}")
 
 
-        # The image is in float format (High Dynamic Range - HDR).
         # Perform simple tone-mapping/normalization for LDR PNG (0-255).
         # We use a simple clip/scale for LDR conversion.
         clipped_image = np.clip(image_float, 0.0, 1.0) # Clips to 0-1 range
@@ -299,7 +299,7 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
         
     print("-" * 50)
     if saved_count > 0:
-        print(f"Completed: Created {saved_count} VMAT file(s).")
+        print(f"Completed: Created {saved_count} VMAT file(s)".format(saved_count))
     else:
         print("VMAT creation completely skipped.")
     
@@ -374,6 +374,12 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     png_paths_map = {}
     temp_files = []
     
+    # Check if the primary input type is EXR (based on the first file)
+    # If all files are EXR, use the EXR-specific layout and rotations.
+    is_exr_input = all(path.lower().endswith('.exr') for path in filenames_map.values())
+    
+    print(f"Detected input type: {'EXR (Applying special rotation/swap)' if is_exr_input else 'Standard (Applying default rotation/swap)'}")
+
     # --- 0. Ensure Output Directory Exists ---
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
@@ -444,9 +450,9 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         return False
 
 
-    # --- 3. Define the new positions (Rotated + Left/Right Swapped) ---
-    # S1 to S2 Required Swap
-    new_layout = {
+    # --- 3. Define the new positions and Rotations ---
+    # Default S1 to S2 Required Swap (Used for VTF, PNG, JPG, etc.)
+    default_layout = {
         'top_slot':    'up',
         'bottom_slot': 'down',
         'left_slot':   'back',  
@@ -454,6 +460,19 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         'front_slot':  'right', 
         'back_slot':   'left',  
     }
+    
+    # EXR Specific Swap (based on user request)
+    exr_layout = {
+        'top_slot':    'up',
+        'bottom_slot': 'down',
+        'left_slot':   'back',  # back stays the same (goes to left slot)
+        'right_slot':  'left',  # left goes to the place of right
+        'front_slot':  'right', # right goes to the place of front
+        'back_slot':   'front', # front goes to the place of back
+    }
+    
+    layout_map = exr_layout if is_exr_input else default_layout
+
 
     # --- 4. Create the canvas and Paste images ---
     final_width = face_width * 4
@@ -469,11 +488,40 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         'bottom_slot': (face_width * 1, face_height * 2),
     }
 
-    print("\nStitching images into the new layout (Rotated + Left/Right Swapped)...")
-    for slot_name, source_image_name in new_layout.items():
+    print("\nStitching images into the new layout...")
+    for slot_name, source_image_name in layout_map.items():
         image_to_paste = images[source_image_name]
+        
+        # Apply specific rotations ONLY if EXR input is detected
+        if is_exr_input:
+            rotation_degrees = 0
+            if source_image_name in ('front', 'up', 'down'):
+                # front one should be rotated 90 degrees
+                # top one should be rotated 90 degrees
+                # bottom one 90 degrees
+                rotation_degrees = -90 # Positive rotation is clockwise, PIL uses negative for clockwise
+            elif source_image_name == 'right' and slot_name == 'front_slot':
+                # right goes in the place of front and rotates 180 degrees
+                rotation_degrees = 180
+            elif source_image_name == 'left' and slot_name == 'right_slot':
+                # left goes in the place of right and rotates 180 degrees
+                rotation_degrees = 180
+            elif source_image_name == 'back':
+                # back stays the same (no rotation)
+                rotation_degrees = 0
+
+            if rotation_degrees != 0:
+                # Rotate the image before pasting (expand=False to maintain size)
+                image_to_paste = image_to_paste.rotate(rotation_degrees, expand=False)
+                print(f"Pasting image from source '{source_image_name}' (Rotated {abs(rotation_degrees)}°) into output '{slot_name}' slot...")
+            else:
+                print(f"Pasting image from source '{source_image_name}' (No Rotation) into output '{slot_name}' slot...")
+
+        else:
+            # Default behavior (no extra rotation/swapping needed beyond the base layout)
+            print(f"Pasting image from source '{source_image_name}' into output '{slot_name}' slot at {coords[slot_name]}...")
+
         position = coords[slot_name]
-        print(f"Pasting image from source '{source_image_name}' into output '{slot_name}' slot at {position}...")
         final_image.paste(image_to_paste, position)
 
     # --- 5. Save the final image and Clean up ---
