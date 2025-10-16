@@ -27,9 +27,11 @@ except NameError:
     sys.exit(1)
 
 # --- EXR Support Library ---
+EXR_SUPPORT_ENABLED = False
 try:
     # We require openexr for .exr file support
     import openexr
+    EXR_SUPPORT_ENABLED = True
 except ImportError:
     # Note: openexr can be complex to install, this warning is useful
     print("Warning: The 'openexr' library is not installed. .exr file support may be unavailable.")
@@ -367,8 +369,20 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
              print("\nFATAL ERROR: VTF conversion required but 'vtf2img' library is missing or failed to initialize.")
              return False
              
-        # Load all images using Pillow (which handles PNG, JPG, TGA, HDR, and now EXR via openexr)
-        images = {face: Image.open(path).convert("RGBA") for face, path in png_paths_map.items()}
+        # Load all images
+        images = {}
+        for face, path in png_paths_map.items():
+            # Check for EXR file dependency failure
+            if path.lower().endswith('.exr') and not EXR_SUPPORT_ENABLED:
+                print(f"\nFATAL ERROR: Cannot load EXR file '{os.path.basename(path)}'.")
+                print("The 'openexr' library is required for EXR support but failed to import. ")
+                print("Please add 'openexr' to requirements.txt and ensure the build system can compile/install it.")
+                raise ImportError("Missing required dependency for EXR files: openexr")
+            
+            # Load image using Pillow (Pillow handles PNG, JPG, TGA, HDR, and EXR if a plugin/dependency is available)
+            img = Image.open(path).convert("RGBA")
+            images[face] = img
+        
         face_width, face_height = images['front'].size
         print(f"\nDetected face size: {face_width}x{face_height}")
 
@@ -378,7 +392,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
                 print(f"Error: Face '{face}' size mismatch ({w}x{h}). All faces must match ({face_width}x{face_height}).")
                 raise ValueError("Image size mismatch.")
 
-    except (FileNotFoundError, ValueError, Exception) as e:
+    except (FileNotFoundError, ValueError, Exception, ImportError) as e:
         print(f"An error occurred during image loading/sizing: {e}")
         for f in temp_files:
             try: os.remove(f)
