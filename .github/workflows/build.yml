@@ -26,10 +26,9 @@ jobs:
           pip install pyinstaller
 
       - name: Build skyboxconverter.py (One-File)
-        # NEW: Using --collect-binaries and --collect-data to aggressively force-bundle the core PIL/Pillow DLLs/data, 
-        # which is the most common fix for 'No module named 'PIL''.
-        # Also forcing collection of the imageio base package.
-        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --collect-binaries PIL --collect-data PIL --collect-all imageio --collect-all imageio-openexr --name SkyboxConverter --icon=icon.ico
+        # Clean command: Removed all aggressive PIL/ImageIO flags that were causing issues.
+        # Now relying on PyInstaller's basic detection for the core dependencies (Pillow, vtf2img).
+        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --name SkyboxConverter --icon=icon.ico
         
       - name: Upload artifact (Single EXE)
         uses: actions/upload-artifact@v4

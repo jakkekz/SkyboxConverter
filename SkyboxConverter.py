@@ -17,27 +17,18 @@ except ImportError:
 
 # --- Image Stitching Library ---
 try:
+    # Check if Pillow is imported correctly
     Image.new
 except NameError:
     print("Error: The 'Pillow' library is required for image stitching.")
     print("Please install it using: pip install Pillow")
     sys.exit(1)
 
-# --- EXR Support Library (Using imageio) ---
-EXR_SUPPORT_ENABLED = False
-try:
-    import imageio.v3 as iio
-    import numpy as np # Used for converting imageio array to Pillow image
-    EXR_SUPPORT_ENABLED = True
-    print("EXR Support: ImageIO is installed and ready for .exr files.")
-except ImportError:
-    print("Warning: The 'imageio' library (and possibly 'numpy') is not installed. .exr file support may be unavailable.")
-    
-# --- CONFIGURATION (UPDATED) ---
+# --- CONFIGURATION ---
 OUTPUT_DIR = "skybox" 
 FINAL_OUTPUT_FILENAME = "skybox_jimi.png"
 FINAL_SKYBOX_VMAT_FILENAME = "skybox_jimi.vmat" # Standard Skybox VMAT
-FINAL_MOONDOME_VMAT_FILENAME = "moondome_jimi.vmat" # New Moondome VMAT
+FINAL_MOONDOME_VMAT_FILENAME = "moondome_jimi.vmat" # Moondome VMAT
 INPUT_DIRECTORY = "." 
 # Path for SkyTexture inside the VMAT (must use engine paths)
 SKYTEXTURE_PATH = f"materials/{OUTPUT_DIR}/{FINAL_OUTPUT_FILENAME}"
@@ -140,8 +131,8 @@ def find_cubemap_files(directory="."):
         'down': ['down', 'dn'],     
     }
     REQUIRED_FACES = set(FACE_KEYWORDS.keys())
-    # UPDATED: Added '.exr' to supported image extensions
-    IMAGE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr', '.exr') 
+    # UPDATED: Removed '.exr'
+    IMAGE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr') 
     VMT_EXTENSION = ('.vmt',)
     ALL_EXTENSIONS = IMAGE_EXTENSIONS + VMT_EXTENSION
 
@@ -369,40 +360,8 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         # Load all images
         images = {}
         for face, path in png_paths_map.items():
-            path_lower = path.lower()
-            
-            # --- Special Handling for EXR files using imageio ---
-            if path_lower.endswith('.exr'):
-                if not EXR_SUPPORT_ENABLED:
-                    print(f"\nFATAL ERROR: Cannot load EXR file '{os.path.basename(path)}'.")
-                    print("The 'imageio' library (or its EXR plugin) is required for EXR support but failed to import.")
-                    print("Please ensure 'imageio' and 'numpy' are in requirements.txt and installed correctly.")
-                    raise ImportError("Missing required dependency for EXR files: imageio/numpy")
-
-                # Use imageio to read the EXR file into a numpy array
-                img_data = iio.imread(path, index=0) # index=0 is used to read the first image layer
-                
-                # Convert the NumPy array to a Pillow Image object
-                # Ensure it's converted to a usable type, typically RGB or RGBA float/uint16
-                if img_data.dtype != np.uint8:
-                     # For HDR data, normalize to a 0-255 range for Pillow (lossy, but necessary for stitching)
-                     # For proper HDR processing, this would need a more complex tone mapping pipeline,
-                     # but for basic stitching, we convert to RGBA.
-                    img_data = (img_data * 255.0).astype(np.uint8)
-                    
-                # Ensure 4 channels (RGBA)
-                if img_data.shape[2] == 3:
-                    img = Image.fromarray(img_data, 'RGB').convert('RGBA')
-                elif img_data.shape[2] == 4:
-                    img = Image.fromarray(img_data, 'RGBA')
-                else:
-                    raise ValueError(f"EXR file {os.path.basename(path)} has unexpected channel count: {img_data.shape[2]}")
-                
-            # --- Standard Pillow Loading for all other formats (PNG, JPG, HDR, etc.) ---
-            else:
-                # Pillow handles PNG, JPG, TGA, HDR (if simple), and VMT-converted PNGs.
-                img = Image.open(path).convert("RGBA")
-                
+            # Standard Pillow Loading for all formats (PNG, JPG, HDR, etc.)
+            img = Image.open(path).convert("RGBA")
             images[face] = img
 
         
@@ -415,7 +374,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
                 print(f"Error: Face '{face}' size mismatch ({w}x{h}). All faces must match ({face_width}x{face_height}).")
                 raise ValueError("Image size mismatch.")
 
-    except (FileNotFoundError, ValueError, Exception, ImportError) as e:
+    except (FileNotFoundError, ValueError, Exception) as e:
         print(f"An error occurred during image loading/sizing: {e}")
         for f in temp_files:
             try: os.remove(f)
