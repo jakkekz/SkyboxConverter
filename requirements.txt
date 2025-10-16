@@ -1,5 +1,4 @@
 Pillow
-
 vtf2img
-
-openexr
+imageio
+numpy
