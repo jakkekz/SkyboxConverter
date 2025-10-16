@@ -1,102 +1,75 @@
-name: Build and Release Executables
+name: Build and Release SkyboxConverter
 
 on:
   push:
-    tags:
-      - 'v*' # Trigger on new tags starting with v (e.g., v1.0.0)
+    branches:
+      - main # Trigger on push to the main branch
   workflow_dispatch: # Allow manual trigger
 
 jobs:
-  # --- 1. BUILD WINDOWS EXECUTABLE ---
-  build_windows_exe:
+  build:
     runs-on: windows-latest
-    
-    env:
-      PYINSTALLER_ALWAYS_CMD: "True"
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5 # Using v5 for latest compatibility
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: '3.10' # Set a specific version for reliability
 
-      - name: Install Python Dependencies
-        run: pip install Pillow vtf2img numpy openexr-numpy pyinstaller
-          
-      - name: Run PyInstaller to create EXE
-        # References your script name: SkyboxConverter.py
-        run: pyinstaller --onefile --name skybox_stitcher SkyboxConverter.py
-
-      - name: Upload Windows Executable Artifact
-        # The artifact name must be consistent for the download step
-        uses: actions/upload-artifact@v4
-        with:
-          name: skybox_stitcher_windows_exe
-          path: dist/skybox_stitcher.exe
-          retention-days: 7
-          
-  # --- 2. BUILD LINUX EXECUTABLE ---
-  build_linux_executable:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.10
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-
-      - name: Install System Dependencies for OpenEXR
+      - name: Install dependencies
+        # Install all known required libraries explicitly
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libopenexr-dev
+          python -m pip install --upgrade pip
+          pip install Pillow vtf2img numpy openexr-numpy pyinstaller
 
-      - name: Install Python Dependencies
-        run: pip install Pillow vtf2img numpy openexr-numpy pyinstaller
+      - name: Build SkyboxConverter.py (One-File)
+        # Assuming your script is named 'SkyboxConverter.py' (with capital C)
+        run: pyinstaller SkyboxConverter.py --onefile --hidden-import vtf2img --collect-all openexr_numpy --name SkyboxConverter --icon=icon.ico
 
-      - name: Run PyInstaller
-        # References your script name: SkyboxConverter.py
-        run: pyinstaller --onefile --name skybox_stitcher SkyboxConverter.py
-
-      - name: Upload Linux Executable Artifact
-        # The artifact name must be consistent for the download step
+      - name: Upload artifact (Single EXE)
         uses: actions/upload-artifact@v4
         with:
-          name: skybox_stitcher_linux_executable
-          path: dist/skybox_stitcher
-          retention-days: 7
+          name: SkyboxConverter-exe
+          path: dist/SkyboxConverter.exe
 
-  # --- 3. CREATE GITHUB RELEASE AND ATTACH ARTIFACTS ---
-  create_release:
-    # Only runs if the previous build jobs succeeded
-    needs: [build_windows_exe, build_linux_executable]
-    # Only runs if the push was triggered by a tag (e.g., v1.0.0)
-    if: startsWith(github.ref, 'refs/tags/')
+  release:
+    needs: build
     runs-on: ubuntu-latest
-    
+    # Only run the release job if the build job succeeded.
+    if: success()
+
     steps:
-      - name: Download all build artifacts
+      - uses: actions/checkout@v4
+        # Need to fetch history to create and push the new tag
+        with:
+          fetch-depth: 0
+
+      - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
+          name: SkyboxConverter-exe
+          path: ./artifacts
 
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v1
+      # --- CRITICAL FIX: Create and push the 'latest' tag ---
+      - name: Set and Push 'latest' Tag
+        run: |
+          # Delete existing local and remote 'latest' tag
+          git tag -d latest || true
+          git push origin :latest || true
+          # Create and push the new 'latest' tag
+          git tag latest
+          git push origin latest
+
+      - name: Create and Upload Release
+        uses: softprops/action-gh-release@v2
         with:
-          # Targets all files in the downloaded artifact folders (./artifacts)
-          files: artifacts/**
-          # Uses the tag name (e.g., v1.0.0) as the name of the release
-          name: Release ${{ github.ref_name }}
-          # Ensures the release is not marked as a pre-release. 
-          # The most recent non-prerelease will automatically be marked as "Latest".
+          files: ./artifacts/SkyboxConverter.exe
+          # Use the 'latest' tag we just created
+          tag_name: latest
+          name: SkyboxConverter - Latest Build
+          draft: false
           prerelease: false
-          body: |
-            ## Skybox Stitcher Release ${{ github.ref_name }}
-            
-            This release includes the Windows and Linux executables for the latest version.
+          # Ensure your GITHUB_TOKEN has 'contents: write' permission
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
