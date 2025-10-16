@@ -13,28 +13,25 @@ try:
 except ImportError:
     print("Error: The 'vtf2img' library is required for VTF conversion.")
     print("Please install it using: pip install vtf2img")
-    # Using sys.exit(1) here is fine, but we need to handle the case where
-    # the user might be running the compiled executable. We'll let the import fail
-    # and rely on the PyInstaller context to resolve it.
+    sys.exit(1) # Exit immediately if vtf2img is missing as it's a primary function
 
 # --- Image Stitching Library ---
 try:
     Image.new
 except NameError:
-    # This block is unlikely to be hit if Pillow is installed, but included for robustness
     print("Error: The 'Pillow' library is required for image stitching.")
     print("Please install it using: pip install Pillow")
     sys.exit(1)
 
-# --- EXR Support Library ---
+# --- EXR Support Library (Using imageio) ---
 EXR_SUPPORT_ENABLED = False
 try:
-    # We require openexr for .exr file support
-    import openexr
+    import imageio.v3 as iio
+    import numpy as np # Used for converting imageio array to Pillow image
     EXR_SUPPORT_ENABLED = True
+    print("EXR Support: ImageIO is installed and ready for .exr files.")
 except ImportError:
-    # Note: openexr can be complex to install, this warning is useful
-    print("Warning: The 'openexr' library is not installed. .exr file support may be unavailable.")
+    print("Warning: The 'imageio' library (and possibly 'numpy') is not installed. .exr file support may be unavailable.")
     
 # --- CONFIGURATION (UPDATED) ---
 OUTPUT_DIR = "skybox" 
@@ -372,16 +369,42 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         # Load all images
         images = {}
         for face, path in png_paths_map.items():
-            # Check for EXR file dependency failure
-            if path.lower().endswith('.exr') and not EXR_SUPPORT_ENABLED:
-                print(f"\nFATAL ERROR: Cannot load EXR file '{os.path.basename(path)}'.")
-                print("The 'openexr' library is required for EXR support but failed to import. ")
-                print("Please add 'openexr' to requirements.txt and ensure the build system can compile/install it.")
-                raise ImportError("Missing required dependency for EXR files: openexr")
+            path_lower = path.lower()
             
-            # Load image using Pillow (Pillow handles PNG, JPG, TGA, HDR, and EXR if a plugin/dependency is available)
-            img = Image.open(path).convert("RGBA")
+            # --- Special Handling for EXR files using imageio ---
+            if path_lower.endswith('.exr'):
+                if not EXR_SUPPORT_ENABLED:
+                    print(f"\nFATAL ERROR: Cannot load EXR file '{os.path.basename(path)}'.")
+                    print("The 'imageio' library (or its EXR plugin) is required for EXR support but failed to import.")
+                    print("Please ensure 'imageio' and 'numpy' are in requirements.txt and installed correctly.")
+                    raise ImportError("Missing required dependency for EXR files: imageio/numpy")
+
+                # Use imageio to read the EXR file into a numpy array
+                img_data = iio.imread(path, index=0) # index=0 is used to read the first image layer
+                
+                # Convert the NumPy array to a Pillow Image object
+                # Ensure it's converted to a usable type, typically RGB or RGBA float/uint16
+                if img_data.dtype != np.uint8:
+                     # For HDR data, normalize to a 0-255 range for Pillow (lossy, but necessary for stitching)
+                     # For proper HDR processing, this would need a more complex tone mapping pipeline,
+                     # but for basic stitching, we convert to RGBA.
+                    img_data = (img_data * 255.0).astype(np.uint8)
+                    
+                # Ensure 4 channels (RGBA)
+                if img_data.shape[2] == 3:
+                    img = Image.fromarray(img_data, 'RGB').convert('RGBA')
+                elif img_data.shape[2] == 4:
+                    img = Image.fromarray(img_data, 'RGBA')
+                else:
+                    raise ValueError(f"EXR file {os.path.basename(path)} has unexpected channel count: {img_data.shape[2]}")
+                
+            # --- Standard Pillow Loading for all other formats (PNG, JPG, HDR, etc.) ---
+            else:
+                # Pillow handles PNG, JPG, TGA, HDR (if simple), and VMT-converted PNGs.
+                img = Image.open(path).convert("RGBA")
+                
             images[face] = img
+
         
         face_width, face_height = images['front'].size
         print(f"\nDetected face size: {face_width}x{face_height}")
