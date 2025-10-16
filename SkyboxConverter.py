@@ -485,7 +485,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         'left':  ('back', 0),      # Back face SWAPS to Left slot, 0 deg
         'front': ('right', -90),   # Right face SWAPS to Front slot, 90 deg CW (-90 CCW)
         'right': ('left', 90),     # Left face SWAPS to Right slot, 90 deg CCW
-        'back':  ('front', 180),   # Front face SWAPS to Back slot, 180 deg flip
+        'back':  ('front', 0),   # Front face SWAPS to Back slot, 180 deg flip
     }
 
     # Determine which transform set to use
