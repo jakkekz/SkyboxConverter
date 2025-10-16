@@ -24,8 +24,8 @@ jobs:
           pip install Pillow vtf2img numpy openexr-numpy pyinstaller
 
       - name: Build SkyboxConverter.py (One-File)
-        # Assuming your script is named 'SkyboxConverter.py' (with capital C)
-        run: pyinstaller SkyboxConverter.py --onefile --hidden-import vtf2img --collect-all openexr_numpy --name SkyboxConverter --icon=icon.ico
+        # **FIXED**: Using --collect-all vtf2img to ensure hidden dependencies (like py_vtf) are bundled
+        run: pyinstaller SkyboxConverter.py --onefile --collect-all vtf2img --collect-all openexr_numpy --name SkyboxConverter --icon=icon.ico
 
       - name: Upload artifact (Single EXE)
         uses: actions/upload-artifact@v4
