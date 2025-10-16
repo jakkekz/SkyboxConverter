@@ -1,4 +1,4 @@
 Pillow
 vtf2img
-imageio
 numpy
+imageio[opencv-latest]
