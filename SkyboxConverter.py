@@ -6,6 +6,14 @@ import time
 import textwrap
 import numpy as np 
 
+# --- ANSI Color Codes ---
+# Added ANSI color codes for terminal output
+class Colors:
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    ENDC = '\033[0m' # Ends the color, reverts to terminal default
+# --- End Color Codes ---
+
 # --- PyInstaller Hook for vtf2img ---
 # This block ensures native dependencies for vtf2img (like py_vtf) are loaded
 if getattr(sys, 'frozen', False):
@@ -66,12 +74,12 @@ FINAL_MOONDOME_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_MOONDOME_VMAT_FILENAME
 EXR_TRANSFORMS = {
     # .EXR files are set to no rotation/flip (0, None) by default. 
     # Adjust these values based on your EXR renderer output standard.
-    'up':    ('up', -90, None),
-    'down':  ('down', -90, None),
-    'left':  ('front', 0, None),
+    'up':     ('up', -90, None),
+    'down':   ('down', -90, None),
+    'left':   ('front', 0, None),
     'front': ('right', -90, None),
     'right': ('back', 180, None),
-    'back':  ('left', 90, None),
+    'back':   ('left', 90, None),
 }
 # --- END CUSTOMIZATION HERE FOR .EXR FILES ---
 
@@ -79,12 +87,12 @@ EXR_TRANSFORMS = {
 # --- RESTORED ORIGINAL ROTATIONS FOR NON-EXR FILES ---
 DEFAULT_TRANSFORMS = {
     # Restores the standard engine rotations and flips for LDR/VTF/PNG sources.
-    'up':    ('up', 0, None),          # Up face: Rotate 180 (transpose(Image.ROTATE_180))
-    'down':  ('down', 0, None),        # Down face: Rotate 180 (transpose(Image.ROTATE_180))
-    'left':  ('back', 0, None),        # Left face: Rotate 90 CCW, then flip Top/Bottom
+    'up':     ('up', 0, None),          # Up face: Rotate 180 (transpose(Image.ROTATE_180))
+    'down':   ('down', 0, None),        # Down face: Rotate 180 (transpose(Image.ROTATE_180))
+    'left':   ('back', 0, None),        # Left face: Rotate 90 CCW, then flip Top/Bottom
     'front': ('right', 0, None),        # Front face: No rotation/flip
-    'right': ('front', 0, None),       # Right face: Rotate 90 CW (-90), then flip Top/Bottom
-    'back':  ('left', 0, None),       # Back face: Rotate 180 (transpose(Image.ROTATE_180))
+    'right': ('front', 0, None),        # Right face: Rotate 90 CW (-90), then flip Top/Bottom
+    'back':   ('left', 0, None),      # Back face: Rotate 180 (transpose(Image.ROTATE_180))
 }
 # --- END RESTORED ROTATIONS ---
 
@@ -93,23 +101,23 @@ LDR_VMAT_CONTENT = f"""// THIS FILE IS AUTO-GENERATED (STANDARD SKYBOX)
 
 Layer0
 {{
-	shader "sky.vfx"
+    shader "sky.vfx"
 
-	//---- Format ----
-	F_TEXTURE_FORMAT2 1 // Dxt1 (LDR)
+    //---- Format ----
+    F_TEXTURE_FORMAT2 1 // Dxt1 (LDR)
 
-	//---- Texture ----
-	g_flBrightnessExposureBias "0.000"
-	g_flRenderOnlyExposureBias "0.000"
-	SkyTexture "{SKYTEXTURE_PATH}"
+    //---- Texture ----
+    g_flBrightnessExposureBias "0.000"
+    g_flRenderOnlyExposureBias "0.000"
+    SkyTexture "{SKYTEXTURE_PATH}"
 
 
-	VariableState
-	{{
-		"Texture"
-		{{
-		}}
-	}}
+    VariableState
+    {{
+        "Texture"
+        {{
+        }}
+    }}
 }}"""
 # --------------------
 
@@ -118,51 +126,51 @@ MOONDOME_VMAT_CONTENT = f"""// THIS FILE IS AUTO-GENERATED (MOONDOME)
 
 Layer0
 {{
-	shader "csgo_moondome.vfx"
+    shader "csgo_moondome.vfx"
 
-	//---- Color ----
-	g_flTexCoordRotation "0.000"
-	g_nScaleTexCoordUByModelScaleAxis "0" // None
-	g_nScaleTexCoordVByModelScaleAxis "0" // None
-	g_vColorTint "[1.000000 1.000000 1.000000 0.000000]"
-	g_vTexCoordCenter "[0.500 0.500]"
-	g_vTexCoordOffset "[0.000 0.000]"
-	g_vTexCoordScale "[1.000 1.000]"
-	g_vTexCoordScrollSpeed "[0.000 0.000]"
-	TextureColor "[1.000000 1.000000 1.000000 0.000000]"
+    //---- Color ----
+    g_flTexCoordRotation "0.000"
+    g_nScaleTexCoordUByModelScaleAxis "0" // None
+    g_nScaleTexCoordVByModelScaleAxis "0" // None
+    g_vColorTint "[1.000000 1.000000 1.000000 0.000000]"
+    g_vTexCoordCenter "[0.500 0.500]"
+    g_vTexCoordOffset "[0.000 0.000]"
+    g_vTexCoordScale "[1.000 1.000]"
+    g_vTexCoordScrollSpeed "[0.000 0.000]"
+    TextureColor "[1.000000 1.000000 1.000000 0.000000]"
 
-	//---- CubeParallax ----
-	g_flCubeParallax "0.000"
+    //---- CubeParallax ----
+    g_flCubeParallax "0.000"
 
-	//---- Fog ----
-	g_bFogEnabled "1"
+    //---- Fog ----
+    g_bFogEnabled "1"
 
-	//---- Texture ----
-	TextureCubeMap "{SKYTEXTURE_PATH}"
+    //---- Texture ----
+    TextureCubeMap "{SKYTEXTURE_PATH}"
 
-	//---- Texture Address Mode ----
-	g_nTextureAddressModeU "0" // Wrap
-	g_nTextureAddressModeV "0" // Wrap
+    //---- Texture Address Mode ----
+    g_nTextureAddressModeU "0" // Wrap
+    g_nTextureAddressModeV "0" // Wrap
 
 
-	VariableState
-	{{
-		"Color"
-		{{
-		}}
-		"CubeParallax"
-		{{
-		}}
-		"Fog"
-		{{
-		}}
-		"Texture"
-		{{
-		}}
-		"Texture Address Mode"
-		{{
-		}}
-	}}
+    VariableState
+    {{
+        "Color"
+        {{
+        }}
+        "CubeParallax"
+        {{
+        }}
+        "Fog"
+        {{
+        }}
+        "Texture"
+        {{
+        }}
+        "Texture Address Mode"
+        {{
+        }}
+    }}
 }}"""
 # --------------------
 
@@ -280,7 +288,7 @@ def convert_vtf_to_png(vtf_path, output_dir):
         # Ensure image is in RGBA format before saving
         image = image.convert("RGBA")
         image.save(png_path, "PNG")
-        print(f"  -> Saved temporary file: {os.path.basename(png_path)}")
+        print(f"   -> Saved temporary file: {os.path.basename(png_path)}")
         return png_path
     except Exception as e:
         # Check for the specific error related to format 3 to give a helpful message
@@ -321,6 +329,7 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
     
     # --- 1. Standard Skybox VMAT Prompt ---
     try:
+        # Note: No color changes here as the request was only for the 'delete' prompt
         choice_skybox = input("Do you want to create a Standard Skybox Material? (Y/N): ").strip().lower()
         if choice_skybox in ['yes', 'y']:
             generate_vmat_content_and_save(skybox_vmat_path, LDR_VMAT_CONTENT, "Standard Skybox")
@@ -332,6 +341,7 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
 
     # --- 2. Moondome VMAT Prompt ---
     try:
+        # Note: No color changes here as the request was only for the 'delete' prompt
         choice_moondome = input("Do you want to create a Moondome Material? (Y/N): ").strip().lower()
         if choice_moondome in ['yes', 'y']:
             generate_vmat_content_and_save(moondome_vmat_path, MOONDOME_VMAT_CONTENT, "Moondome")
@@ -353,6 +363,11 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
 def clean_up_source_files(filenames_map, directory):
     """
     Asks the user if they want to delete the original source files (VTF, VMT, EXR, PNG, JPG, etc.) used.
+    
+    APPLYING COLORS HERE:
+    - 'delete' text is red
+    - 'Y' is green
+    - 'N' is red
     """
     files_to_delete = []
     
@@ -378,15 +393,20 @@ def clean_up_source_files(filenames_map, directory):
         print("\nNo original source image (.vtf, .png, .exr, etc.) or associated .vmt files were used/found for cleanup.")
         return
 
+    # --- Applying Colors to Section Header ---
     print("\n" + "=" * 50)
-    print("Cleanup Phase: Delete Original Source Files")
+    print(f"Cleanup Phase: {Colors.RED}Delete{Colors.ENDC} Original Source Files")
     print("=" * 50)
     print("The following original source files were used and can be deleted:")
     for f in files_to_delete:
         print(f" - {os.path.basename(f)}")
 
     try:
-        choice = input("Do you want to delete ALL the source files listed above? (Y/N): ").strip().lower()
+        # --- Applying Colors to Prompt ---
+        choice = input(
+            f"Do you want to {Colors.RED}delete{Colors.ENDC} ALL the source files listed above? "
+            f"({Colors.GREEN}Y{Colors.ENDC}/{Colors.RED}N{Colors.ENDC}): "
+        ).strip().lower()
     except Exception:
         print("\nCleanup skipped: Non-interactive session detected or input error.")
         return
@@ -396,10 +416,10 @@ def clean_up_source_files(filenames_map, directory):
         for f in files_to_delete:
             try:
                 os.remove(f)
-                print(f"    -> Deleted: {os.path.basename(f)}")
+                print(f"     -> Deleted: {os.path.basename(f)}")
                 deleted_count += 1
             except OSError as e:
-                print(f"    -> ERROR: Could not delete {os.path.basename(f)}. Permission denied or file in use: {e}")
+                print(f"     -> ERROR: Could not delete {os.path.basename(f)}. Permission denied or file in use: {e}")
         print(f"\nCleanup complete. {deleted_count} files were deleted.")
     else:
         print("\nCleanup skipped. Original source files were preserved.")
@@ -463,7 +483,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
             if convert_exr_to_png(path, png_path):
                 png_paths_map[face] = png_path
                 temp_files.append(png_path)
-                print(f"  -> Saved temporary file: {os.path.basename(png_path)}")
+                print(f"   -> Saved temporary file: {os.path.basename(png_path)}")
             else:
                 print(f"Error converting EXR file '{path}'. Stopping.")
                 return False
