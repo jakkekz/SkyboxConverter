@@ -311,7 +311,7 @@ def generate_vmat_content_and_save(vmat_path, content, material_type):
 
 def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
     """
-    Asks the user which VMAT files they want to create using Y/N prompts.
+    Asks the user which VMAT files they want to create using Y/N prompts, with spacing.
     """
     print("\n" + "=" * 50)
     print("VMAT Generation Phase")
@@ -319,18 +319,19 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
     
     saved_count = 0
     
-    # --- 1. Standard Skybox VMAT Prompt ---
+    # --- 1. Skybox VMAT Prompt (Updated text) ---
     try:
-        choice_skybox = input("Do you want to create a Standard Skybox Material? (Y/N): ").strip().lower()
+        choice_skybox = input("Do you want to create a Skybox Material? (Y/N): ").strip().lower()
         if choice_skybox in ['yes', 'y']:
-            generate_vmat_content_and_save(skybox_vmat_path, LDR_VMAT_CONTENT, "Standard Skybox")
+            generate_vmat_content_and_save(skybox_vmat_path, LDR_VMAT_CONTENT, "Skybox")
             saved_count += 1
         else:
-            print("Standard Skybox VMAT creation skipped.")
+            print("Skybox VMAT creation skipped.")
     except Exception:
-        print("Standard Skybox VMAT creation skipped due to input error.")
+        print("Skybox VMAT creation skipped due to input error.")
 
-    # --- 2. Moondome VMAT Prompt ---
+    # --- 2. Moondome VMAT Prompt (Added blank line before this prompt) ---
+    print("") # Added blank line for spacing
     try:
         choice_moondome = input("Do you want to create a Moondome Material? (Y/N): ").strip().lower()
         if choice_moondome in ['yes', 'y']:
@@ -353,8 +354,6 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
 def clean_up_source_files(filenames_map, directory):
     """
     Asks the user if they want to delete the original source materials (VTF, VMT, EXR, PNG, JPG, etc.) used.
-    
-    NOTE: Color codes (RED/GREEN) have been removed from this function.
     """
     files_to_delete = []
     
@@ -380,7 +379,7 @@ def clean_up_source_files(filenames_map, directory):
         print("\nNo original source materials (.vtf, .png, .exr, etc.) or associated .vmt files were used/found for cleanup.")
         return
 
-    # --- Cleanup Phase Header (No colors) ---
+    # --- Cleanup Phase Header ---
     print("\n" + "=" * 50)
     print("Cleanup Phase: Delete Source Materials")
     print("=" * 50)
@@ -420,7 +419,8 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     rotations/placements based on the EXR_TRANSFORMS and DEFAULT_TRANSFORMS configs.
     """
     print("-" * 50)
-    print("Starting Cubemap Stitcher")
+    # --- Updated Stitcher Title ---
+    print("Starting Skybox Converter")
     print("-" * 50)
 
     if len(filenames_map) != 6:
@@ -632,13 +632,13 @@ if __name__ == "__main__":
         # Renamed to include all source image types
         clean_up_source_files(file_map, INPUT_DIRECTORY)
         
-    # 5. Final Confirmation and Auto-Exit (Only shows SUCCESS if stitching was successful)
-    print("\n" + "#" * 50)
+    # 5. Final Confirmation and Auto-Exit (Updated dividers)
+    print("\n" + "=" * 50)
     if success:
         print(f"PROCESS COMPLETE: All output files were created in the '{OUTPUT_DIR}' folder.")
     else:
         print("PROCESS FAILED: Output image creation failed. Check errors and missing files above.")
-    print("#" * 50)
+    print("=" * 50)
         
     print("Closing script in 3 seconds...")
     time.sleep(3)
