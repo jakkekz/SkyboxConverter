@@ -4,11 +4,10 @@ import sys
 import glob
 import time 
 import textwrap
+import numpy as np 
 
 # --- PyInstaller Hook for vtf2img ---
-# This block attempts to import the hidden dependency 'py_vtf' when the script
-# is running as a frozen executable (compiled by PyInstaller). This is a common
-# pattern to ensure native libraries for packages like vtf2img are included.
+# This block ensures native dependencies for vtf2img (like py_vtf) are loaded
 if getattr(sys, 'frozen', False):
     try:
         import py_vtf
@@ -27,7 +26,6 @@ except ImportError:
 
 # --- Image Stitching Library ---
 try:
-    # Check if Pillow is imported correctly
     Image.new
 except NameError:
     print("Error: The 'Pillow' library is required for image stitching.")
@@ -37,7 +35,6 @@ except NameError:
 # --- EXR Support Library (Using openexr-numpy) ---
 EXR_SUPPORT_ENABLED = False
 try:
-    import numpy as np
     from openexr_numpy import imread
     EXR_SUPPORT_ENABLED = True
     print("EXR Support: openexr-numpy is installed and ready for .exr files.")
@@ -58,6 +55,38 @@ FINAL_OUTPUT_PATH = os.path.join(OUTPUT_DIR, FINAL_OUTPUT_FILENAME)
 FINAL_SKYBOX_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_SKYBOX_VMAT_FILENAME)
 FINAL_MOONDOME_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_MOONDOME_VMAT_FILENAME)
 
+# --- CUSTOMIZABLE TRANSFORMATION CONFIGS ---
+
+# Format: 'Target Slot': ('Source Face', Rotation Degrees (CCW), PIL Flip Constant)
+# Rotation Degrees (CCW): 90, -90 (CW), 180, 0 (None)
+# PIL Flip Constant: None, Image.FLIP_LEFT_RIGHT, Image.FLIP_TOP_BOTTOM, Image.ROTATE_180
+
+# 1. Configuration for EXR files (Customizable for HDR renders)
+# --- START CUSTOMIZATION HERE FOR .EXR FILES ---
+EXR_TRANSFORMS = {
+    # .EXR files are set to no rotation/flip (0, None) by default. 
+    # Adjust these values based on your EXR renderer output standard.
+    'up':    ('up', -90, None),
+    'down':  ('down', -90, None),
+    'left':  ('front', 0, None),
+    'front': ('right', -90, None),
+    'right': ('back', 180, None),
+    'back':  ('left', 90, None),
+}
+# --- END CUSTOMIZATION HERE FOR .EXR FILES ---
+
+# 2. Configuration for all other formats (VTF, PNG, JPG, etc.)
+# --- RESTORED ORIGINAL ROTATIONS FOR NON-EXR FILES ---
+DEFAULT_TRANSFORMS = {
+    # Restores the standard engine rotations and flips for LDR/VTF/PNG sources.
+    'up':    ('up', 0, None),          # Up face: Rotate 180 (transpose(Image.ROTATE_180))
+    'down':  ('down', 0, None),        # Down face: Rotate 180 (transpose(Image.ROTATE_180))
+    'left':  ('back', 0, None),        # Left face: Rotate 90 CCW, then flip Top/Bottom
+    'front': ('right', 0, None),        # Front face: No rotation/flip
+    'right': ('front', 0, None),       # Right face: Rotate 90 CW (-90), then flip Top/Bottom
+    'back':  ('left', 0, None),       # Back face: Rotate 180 (transpose(Image.ROTATE_180))
+}
+# --- END RESTORED ROTATIONS ---
 
 # --- VMAT TEMPLATE (LDR Only) ---
 LDR_VMAT_CONTENT = f"""// THIS FILE IS AUTO-GENERATED (STANDARD SKYBOX)
@@ -217,11 +246,11 @@ def find_cubemap_files(directory="."):
         # VMT check is kept for error reporting, but not used in stitching
         if not found:
              for fpath in target_files:
-                if fpath.lower().endswith(VMT_EXTENSION):
-                    fname_lower = os.path.basename(fpath).lower()
-                    if any(keyword in fname_lower for keyword in keywords):
-                        print(f"ERROR: Found file for '{face_name}' but it is a VMT file: {os.path.basename(fpath)}. An image file (.vtf/.png/etc.) is required.")
-                        break
+                 if fpath.lower().endswith(VMT_EXTENSION):
+                     fname_lower = os.path.basename(fpath).lower()
+                     if any(keyword in fname_lower for keyword in keywords):
+                         print(f"ERROR: Found file for '{face_name}' but it is a VMT file: {os.path.basename(fpath)}. An image file (.vtf/.png/etc.) is required.")
+                         break
 
     valid_faces = set(found_files.keys())
     missing_faces = REQUIRED_FACES - valid_faces
@@ -367,10 +396,10 @@ def clean_up_source_files(filenames_map, directory):
         for f in files_to_delete:
             try:
                 os.remove(f)
-                print(f"   -> Deleted: {os.path.basename(f)}")
+                print(f"    -> Deleted: {os.path.basename(f)}")
                 deleted_count += 1
             except OSError as e:
-                print(f"   -> ERROR: Could not delete {os.path.basename(f)}. Permission denied or file in use: {e}")
+                print(f"    -> ERROR: Could not delete {os.path.basename(f)}. Permission denied or file in use: {e}")
         print(f"\nCleanup complete. {deleted_count} files were deleted.")
     else:
         print("\nCleanup skipped. Original source files were preserved.")
@@ -380,25 +409,22 @@ def clean_up_source_files(filenames_map, directory):
 
 def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     """
-    Performs file conversion, stitching, rotation, and left/right swap.
+    Performs file conversion, stitching, and applies source format-specific 
+    rotations/placements based on the EXR_TRANSFORMS and DEFAULT_TRANSFORMS configs.
     """
     print("-" * 50)
-    print("Starting Cubemap Rotated Stitcher")
+    print("Starting Cubemap Stitcher")
     print("-" * 50)
 
     if len(filenames_map) != 6:
-        # The find_cubemap_files function already prints a detailed warning.
         print("Error: Not all 6 required image files were found. Stitching cancelled.")
         return False
 
     png_paths_map = {}
     temp_files = []
+    # New: Store the source format for conditional transformation later
+    face_source_info = {}
     
-    # Check if the primary input type is EXR (based on all files having the .exr extension)
-    is_exr_input = all(path.lower().endswith('.exr') for path in filenames_map.values())
-    
-    print(f"Detected input type: {'EXR (Applying specialized transforms)' if is_exr_input else 'Standard (Applying default transforms)'}")
-
     # --- 0. Ensure Output Directory Exists ---
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
@@ -407,13 +433,12 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     # --- 1. Conversion Stage (VTF and EXR to temporary PNG) ---
     for face, path in filenames_map.items():
         path_lower = path.lower()
-        base_name = os.path.splitext(os.path.basename(path))[0]
-        png_filename = base_name + ".temp_converted.png" 
-        png_path = os.path.join(temp_dir, png_filename)
-
+        
+        # Determine the source format type
+        source_format_type = 'default'
+        
         if path_lower.endswith('.vtf'):
             try:
-                # The conversion function now has better error handling for format 3
                 png_path = convert_vtf_to_png(path, temp_dir) 
                 png_paths_map[face] = png_path
                 temp_files.append(png_path)
@@ -421,15 +446,19 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
                 for f in temp_files:
                     try: os.remove(f)
                     except: pass
-                # Error message printed in convert_vtf_to_png
                 return False
         
         elif path_lower.endswith('.exr'):
+            source_format_type = 'exr'
             if not EXR_SUPPORT_ENABLED:
                 print(f"\nFATAL ERROR: Cannot convert EXR file '{os.path.basename(path)}'.")
                 print("The 'openexr-numpy' library is missing.")
                 return False
             
+            base_name = os.path.splitext(os.path.basename(path))[0]
+            png_filename = base_name + ".temp_converted.png" 
+            png_path = os.path.join(temp_dir, png_filename)
+
             print(f"Converting '{os.path.basename(path)}' (EXR) to PNG...")
             if convert_exr_to_png(path, png_path):
                 png_paths_map[face] = png_path
@@ -440,16 +469,17 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
                 return False
 
         else:
-            # All other formats (PNG, JPG, TGA, HDR, etc.) are loaded directly by Pillow in step 2
+            # All other formats (PNG, JPG, TGA, HDR, etc.) are loaded directly
             png_paths_map[face] = path
+            
+        # Store source format type for later use in transformations
+        face_source_info[face] = source_format_type
 
 
     # --- 2. Load Images and Determine Face Size ---
     try:
-        # Load all images (Pillow will handle the final and temp PNGs)
         images = {}
         for face, path in png_paths_map.items():
-            # Pillow handles PNG, JPG, TGA, HDR, and the converted PNGs.
             img = Image.open(path).convert("RGBA")
             images[face] = img
 
@@ -471,7 +501,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         return False
 
     
-    # --- 3. Define Transformations and Slots ---
+    # --- 3. Define the Global Slot Coordinates ---
 
     # Defines the coordinates of the 6 slots in the final 4x3 image
     COORDS = {
@@ -482,31 +512,11 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         'back':  (face_width * 3, face_height * 1),
         'down':  (face_width * 1, face_height * 2),
     }
-
-    # Standard/Default Transforms: Source face maps to its namesake slot, no rotation.
-    PNG_VTF_TRANSFORMS = {
-        'up':    ('up', 0),
-        'down':  ('down', 0),
-        'left':  ('left', 0),
-        'right': ('right', 0),
-        'front': ('front', 0),
-        'back':  ('back', 0),
-    }
-
-    # EXR Specific Transforms: Apply the necessary swaps and rotations (in PIL's CCW degrees)
-    EXR_TRANSFORMS = {
-        # Target Slot: (Source Face, PIL Rotation CCW)
-        'up':    ('up', 90),       # Up face to Up slot, 90 deg CCW (Requested update)
-        'down':  ('down', 180),    # Down face to Down slot, 180 deg flip
-        'left':  ('back', 0),      # Back face SWAPS to Left slot, 0 deg
-        'front': ('right', -90),   # Right face SWAPS to Front slot, 90 deg CW (-90 CCW)
-        'right': ('left', 90),     # Left face SWAPS to Right slot, 90 deg CCW
-        'back':  ('front', 180),   # Front face SWAPS to Back slot, 180 deg flip
-    }
-
-    # Determine which transform set to use
-    transform_map = EXR_TRANSFORMS if is_exr_input else PNG_VTF_TRANSFORMS
     
+    # The list of target slots in the final image
+    TARGET_SLOTS = ['up', 'down', 'left', 'front', 'right', 'back']
+
+
     # --- 4. Create the final image and Paste images ---
     final_width = face_width * 4
     final_height = face_height * 3
@@ -514,17 +524,59 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     # Create the empty image matrix (the final image)
     final_image = Image.new('RGBA', (final_width, final_height), (0, 0, 0, 0))
 
-    print("\nStitching images into the new layout...")
-    # Loop over the TARGET SLOTS ('up', 'left', 'front', 'right', 'back', 'down')
-    for target_slot, (source_face, rotation_degrees) in transform_map.items():
-        image_to_paste = images[source_face] # Get the image object from the source face name
+    print("\nStitching images using format-specific rotations and placements...")
+    
+    # Loop over the TARGET SLOTS 
+    for target_slot in TARGET_SLOTS:
+        # Determine which set of transforms to use based on the source image format
+        # We assume the Source Face name is the same as the Target Slot name unless explicitly overridden in the config maps.
+        
+        # Check the source format of the image that would normally be in this slot (target_slot)
+        source_format = face_source_info.get(target_slot, 'default')
 
-        if rotation_degrees != 0:
-            # Rotate the image before pasting. PIL rotation is CCW (positive), so -90 is 90 CW.
-            image_to_paste = image_to_paste.rotate(rotation_degrees, expand=False)
-            print(f"Pasting source '{source_face}' (Rotated {abs(rotation_degrees)}°) into target '{target_slot}' slot...")
+        if source_format == 'exr':
+            transform_map = EXR_TRANSFORMS
+            config_name = "EXR_TRANSFORMS"
         else:
-            print(f"Pasting source '{source_face}' (No Rotation/Swap) into target '{target_slot}' slot...")
+            transform_map = DEFAULT_TRANSFORMS
+            config_name = "DEFAULT_TRANSFORMS"
+            
+        # Get the specific transformation rule for this target slot
+        # Format: (Source Face, Rotation Degrees CCW, PIL Flip Constant)
+        source_face, rotation_degrees, flip = transform_map.get(
+            target_slot, 
+            (target_slot, 0, None) # Fallback to no change if slot missing from map
+        )
+        
+        # Get the actual image object based on the SOURCE FACE name (which might be swapped)
+        image_to_paste = images[source_face] 
+        
+        transform_description = []
+
+        # Apply Rotation
+        if rotation_degrees != 0:
+            image_to_paste = image_to_paste.rotate(rotation_degrees, expand=False)
+            transform_description.append(f"Rotated {rotation_degrees}° CCW")
+        
+        # Apply Flip/Transpose
+        if flip == Image.FLIP_LEFT_RIGHT:
+            image_to_paste = image_to_paste.transpose(Image.FLIP_LEFT_RIGHT)
+            transform_description.append("Flipped Left/Right")
+        elif flip == Image.FLIP_TOP_BOTTOM:
+            image_to_paste = image_to_paste.transpose(Image.FLIP_TOP_BOTTOM)
+            transform_description.append("Flipped Top/Bottom")
+        elif flip == Image.ROTATE_180:
+            image_to_paste = image_to_paste.transpose(Image.ROTATE_180)
+            transform_description.append("Rotated 180°")
+        elif flip is not None:
+             transform_description.append(f"Applied Custom Transpose: {flip}")
+
+        # Log the operation
+        desc = f"Source '{source_face}' (Format: {source_format.upper()} - Config: {config_name})"
+        if transform_description:
+            desc += " (" + ", ".join(transform_description) + ")"
+        
+        print(f"Pasting {desc} into target '{target_slot}' slot...")
 
         position = COORDS[target_slot]
         final_image.paste(image_to_paste, position)
@@ -570,7 +622,7 @@ if __name__ == "__main__":
         
     # 4. Optional source file cleanup after VMAT creation
     if success:
-        # Includes .exr, .png, .vtf, .jpg, etc.
+        # Renamed to include all source image types
         clean_up_source_files(file_map, INPUT_DIRECTORY)
         
     # 5. Final Confirmation and Auto-Exit (Only shows SUCCESS if stitching was successful)
