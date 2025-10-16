@@ -1,4 +1,4 @@
-name: Build Single Executable
+name: Build and Release Executables
 
 on:
   push:
@@ -7,11 +7,10 @@ on:
   workflow_dispatch: # Allow manual trigger
 
 jobs:
+  # --- 1. BUILD WINDOWS EXECUTABLE ---
   build_windows_exe:
-    # Use Windows to generate the .exe file
     runs-on: windows-latest
     
-    # Set a custom environment variable often required for PyInstaller to work with complex packages
     env:
       PYINSTALLER_ALWAYS_CMD: "True"
 
@@ -26,23 +25,22 @@ jobs:
           cache: 'pip'
 
       - name: Install Python Dependencies
-        # Install all required libraries, including PyInstaller
         run: pip install Pillow vtf2img numpy openexr-numpy pyinstaller
           
       - name: Run PyInstaller to create EXE
-        # IMPORTANT: References your script name
+        # References your script name: SkyboxConverter.py
         run: pyinstaller --onefile --name skybox_stitcher SkyboxConverter.py
 
-      - name: Upload Executable Artifact
-        # Uploads the finished .exe file from the 'dist' folder
+      - name: Upload Windows Executable Artifact
+        # The artifact name must be consistent for the download step
         uses: actions/upload-artifact@v4
         with:
           name: skybox_stitcher_windows_exe
           path: dist/skybox_stitcher.exe
           retention-days: 7
           
+  # --- 2. BUILD LINUX EXECUTABLE ---
   build_linux_executable:
-    # Use Linux to generate an executable for other platforms
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -55,7 +53,6 @@ jobs:
           cache: 'pip'
 
       - name: Install System Dependencies for OpenEXR
-        # Required for openexr-numpy to install correctly on Ubuntu
         run: |
           sudo apt-get update
           sudo apt-get install -y libopenexr-dev
@@ -64,13 +61,42 @@ jobs:
         run: pip install Pillow vtf2img numpy openexr-numpy pyinstaller
 
       - name: Run PyInstaller
-        # IMPORTANT: References your script name
+        # References your script name: SkyboxConverter.py
         run: pyinstaller --onefile --name skybox_stitcher SkyboxConverter.py
 
-      - name: Upload Executable Artifact
+      - name: Upload Linux Executable Artifact
+        # The artifact name must be consistent for the download step
         uses: actions/upload-artifact@v4
         with:
           name: skybox_stitcher_linux_executable
-          # The PyInstaller output file on Linux is named just 'skybox_stitcher'
           path: dist/skybox_stitcher
           retention-days: 7
+
+  # --- 3. CREATE GITHUB RELEASE AND ATTACH ARTIFACTS ---
+  create_release:
+    # Only runs if the previous build jobs succeeded
+    needs: [build_windows_exe, build_linux_executable]
+    # Only runs if the push was triggered by a tag (e.g., v1.0.0)
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          # Targets all files in the downloaded artifact folders (./artifacts)
+          files: artifacts/**
+          # Uses the tag name (e.g., v1.0.0) as the name of the release
+          name: Release ${{ github.ref_name }}
+          # Ensures the release is not marked as a pre-release. 
+          # The most recent non-prerelease will automatically be marked as "Latest".
+          prerelease: false
+          body: |
+            ## Skybox Stitcher Release ${{ github.ref_name }}
+            
+            This release includes the Windows and Linux executables for the latest version.
