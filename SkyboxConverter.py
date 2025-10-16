@@ -6,14 +6,6 @@ import time
 import textwrap
 import numpy as np 
 
-# --- ANSI Color Codes ---
-# Added ANSI color codes for terminal output
-class Colors:
-    RED = '\033[91m'
-    GREEN = '\033[92m'
-    ENDC = '\033[0m' # Ends the color, reverts to terminal default
-# --- End Color Codes ---
-
 # --- PyInstaller Hook for vtf2img ---
 # This block ensures native dependencies for vtf2img (like py_vtf) are loaded
 if getattr(sys, 'frozen', False):
@@ -74,12 +66,12 @@ FINAL_MOONDOME_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_MOONDOME_VMAT_FILENAME
 EXR_TRANSFORMS = {
     # .EXR files are set to no rotation/flip (0, None) by default. 
     # Adjust these values based on your EXR renderer output standard.
-    'up':     ('up', -90, None),
-    'down':   ('down', -90, None),
-    'left':   ('front', 0, None),
+    'up':      ('up', -90, None),
+    'down':    ('down', -90, None),
+    'left':    ('front', 0, None),
     'front': ('right', -90, None),
     'right': ('back', 180, None),
-    'back':   ('left', 90, None),
+    'back':    ('left', 90, None),
 }
 # --- END CUSTOMIZATION HERE FOR .EXR FILES ---
 
@@ -87,12 +79,12 @@ EXR_TRANSFORMS = {
 # --- RESTORED ORIGINAL ROTATIONS FOR NON-EXR FILES ---
 DEFAULT_TRANSFORMS = {
     # Restores the standard engine rotations and flips for LDR/VTF/PNG sources.
-    'up':     ('up', 0, None),          # Up face: Rotate 180 (transpose(Image.ROTATE_180))
-    'down':   ('down', 0, None),        # Down face: Rotate 180 (transpose(Image.ROTATE_180))
-    'left':   ('back', 0, None),        # Left face: Rotate 90 CCW, then flip Top/Bottom
+    'up':      ('up', 0, None),        # Up face: Rotate 180 (transpose(Image.ROTATE_180))
+    'down':    ('down', 0, None),        # Down face: Rotate 180 (transpose(Image.ROTATE_180))
+    'left':    ('back', 0, None),        # Left face: Rotate 90 CCW, then flip Top/Bottom
     'front': ('right', 0, None),        # Front face: No rotation/flip
     'right': ('front', 0, None),        # Right face: Rotate 90 CW (-90), then flip Top/Bottom
-    'back':   ('left', 0, None),      # Back face: Rotate 180 (transpose(Image.ROTATE_180))
+    'back':    ('left', 0, None),      # Back face: Rotate 180 (transpose(Image.ROTATE_180))
 }
 # --- END RESTORED ROTATIONS ---
 
@@ -288,7 +280,7 @@ def convert_vtf_to_png(vtf_path, output_dir):
         # Ensure image is in RGBA format before saving
         image = image.convert("RGBA")
         image.save(png_path, "PNG")
-        print(f"   -> Saved temporary file: {os.path.basename(png_path)}")
+        print(f"    -> Saved temporary file: {os.path.basename(png_path)}")
         return png_path
     except Exception as e:
         # Check for the specific error related to format 3 to give a helpful message
@@ -329,7 +321,6 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
     
     # --- 1. Standard Skybox VMAT Prompt ---
     try:
-        # Note: No color changes here as the request was only for the 'delete' prompt
         choice_skybox = input("Do you want to create a Standard Skybox Material? (Y/N): ").strip().lower()
         if choice_skybox in ['yes', 'y']:
             generate_vmat_content_and_save(skybox_vmat_path, LDR_VMAT_CONTENT, "Standard Skybox")
@@ -341,7 +332,6 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
 
     # --- 2. Moondome VMAT Prompt ---
     try:
-        # Note: No color changes here as the request was only for the 'delete' prompt
         choice_moondome = input("Do you want to create a Moondome Material? (Y/N): ").strip().lower()
         if choice_moondome in ['yes', 'y']:
             generate_vmat_content_and_save(moondome_vmat_path, MOONDOME_VMAT_CONTENT, "Moondome")
@@ -362,12 +352,9 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
 
 def clean_up_source_files(filenames_map, directory):
     """
-    Asks the user if they want to delete the original source files (VTF, VMT, EXR, PNG, JPG, etc.) used.
+    Asks the user if they want to delete the original source materials (VTF, VMT, EXR, PNG, JPG, etc.) used.
     
-    APPLYING COLORS HERE:
-    - 'delete' text is red
-    - 'Y' is green
-    - 'N' is red
+    NOTE: Color codes (RED/GREEN) have been removed from this function.
     """
     files_to_delete = []
     
@@ -390,22 +377,22 @@ def clean_up_source_files(filenames_map, directory):
     files_to_delete = sorted(list(set(files_to_delete)))
 
     if not files_to_delete:
-        print("\nNo original source image (.vtf, .png, .exr, etc.) or associated .vmt files were used/found for cleanup.")
+        print("\nNo original source materials (.vtf, .png, .exr, etc.) or associated .vmt files were used/found for cleanup.")
         return
 
-    # --- Applying Colors to Section Header ---
+    # --- Cleanup Phase Header (No colors) ---
     print("\n" + "=" * 50)
-    print(f"Cleanup Phase: {Colors.RED}Delete{Colors.ENDC} Original Source Files")
+    print("Cleanup Phase: Delete Source Materials")
     print("=" * 50)
-    print("The following original source files were used and can be deleted:")
+    print("The following original source materials were used and can be deleted:")
     for f in files_to_delete:
         print(f" - {os.path.basename(f)}")
 
     try:
-        # --- Applying Colors to Prompt ---
+        # --- Prompt with NEW wording and NO colors ---
         choice = input(
-            f"Do you want to {Colors.RED}delete{Colors.ENDC} ALL the source files listed above? "
-            f"({Colors.GREEN}Y{Colors.ENDC}/{Colors.RED}N{Colors.ENDC}): "
+            f"Do you want to remove source materials listed above? "
+            f"(Y/N): "
         ).strip().lower()
     except Exception:
         print("\nCleanup skipped: Non-interactive session detected or input error.")
@@ -416,13 +403,13 @@ def clean_up_source_files(filenames_map, directory):
         for f in files_to_delete:
             try:
                 os.remove(f)
-                print(f"     -> Deleted: {os.path.basename(f)}")
+                print(f"     -> Removed: {os.path.basename(f)}")
                 deleted_count += 1
             except OSError as e:
-                print(f"     -> ERROR: Could not delete {os.path.basename(f)}. Permission denied or file in use: {e}")
-        print(f"\nCleanup complete. {deleted_count} files were deleted.")
+                print(f"     -> ERROR: Could not remove {os.path.basename(f)}. Permission denied or file in use: {e}")
+        print(f"\nCleanup complete. {deleted_count} source materials were removed.")
     else:
-        print("\nCleanup skipped. Original source files were preserved.")
+        print("\nCleanup skipped. Original source materials were preserved.")
     
     print("=" * 50)
 
@@ -483,7 +470,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
             if convert_exr_to_png(path, png_path):
                 png_paths_map[face] = png_path
                 temp_files.append(png_path)
-                print(f"   -> Saved temporary file: {os.path.basename(png_path)}")
+                print(f"    -> Saved temporary file: {os.path.basename(png_path)}")
             else:
                 print(f"Error converting EXR file '{path}'. Stopping.")
                 return False
@@ -525,12 +512,12 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
 
     # Defines the coordinates of the 6 slots in the final 4x3 image
     COORDS = {
-        'up':    (face_width * 1, face_height * 0),
-        'left':  (face_width * 0, face_height * 1),
+        'up':      (face_width * 1, face_height * 0),
+        'left':    (face_width * 0, face_height * 1),
         'front': (face_width * 1, face_height * 1),
         'right': (face_width * 2, face_height * 1),
-        'back':  (face_width * 3, face_height * 1),
-        'down':  (face_width * 1, face_height * 2),
+        'back':    (face_width * 3, face_height * 1),
+        'down':    (face_width * 1, face_height * 2),
     }
     
     # The list of target slots in the final image
