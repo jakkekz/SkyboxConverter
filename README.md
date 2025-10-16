@@ -13,8 +13,8 @@ _Heavily vibe coded with Gemini👌_
 - Optionally removes `.vtf` and `.vmt` if used
 
 ## Tutorial:
-1. Download `SkyboxConverter` from the [latest release](https://github.com/jakkekz/SkyboxConverter/releases/tag/latest)
-2. Place SkyboxConverter.exe inside a new folder with all the skybox images (_.vtf, .png, .jpg, .tga etc..._)
+1. Download `SkyboxConverter.exe` from the [latest release](https://github.com/jakkekz/SkyboxConverter/releases/tag/latest)
+2. Place it inside a new folder with all the skybox images (_.vtf, .png, .jpg, .tga etc..._)
 4. Run `SkyboxConverter.exe`
 5. Place the outputs inside `YOURADDON/materials/skybox`
 
