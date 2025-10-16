@@ -24,6 +24,16 @@ except NameError:
     print("Please install it using: pip install Pillow")
     sys.exit(1)
 
+# --- EXR Support Library (Using openexr-numpy) ---
+EXR_SUPPORT_ENABLED = False
+try:
+    import numpy as np
+    from openexr_numpy import imread
+    EXR_SUPPORT_ENABLED = True
+    print("EXR Support: openexr-numpy is installed and ready for .exr files.")
+except ImportError:
+    print("Warning: The 'openexr-numpy' or 'numpy' library is not installed. .exr file support is unavailable.")
+
 # --- CONFIGURATION ---
 OUTPUT_DIR = "skybox" 
 FINAL_OUTPUT_FILENAME = "skybox_jimi.png"
@@ -117,6 +127,43 @@ Layer0
 }}"""
 # --------------------
 
+def convert_exr_to_png(input_file, output_file):
+    """
+    Converts a single EXR file to a temporary LDR PNG file using openexr-numpy and PIL.
+    """
+    try:
+        # Read the EXR file using openexr-numpy
+        image_float = imread(input_file)
+
+        # Drop the Alpha channel if it exists and the PNG is meant to be RGB/LDR
+        if image_float.shape[2] == 4:
+            # We keep the alpha channel here since the stitching uses RGBA
+            pass
+        elif image_float.shape[2] == 3:
+            # Add an alpha channel of 1s if only RGB is present
+            alpha = np.ones((image_float.shape[0], image_float.shape[1], 1), dtype=image_float.dtype)
+            image_float = np.concatenate((image_float, alpha), axis=2)
+
+
+        # The image is in float format (High Dynamic Range - HDR).
+        # Perform simple tone-mapping/normalization for LDR PNG (0-255).
+        # We use a simple clip/scale for LDR conversion.
+        clipped_image = np.clip(image_float, 0.0, 1.0) # Clips to 0-1 range
+
+        # Convert to 8-bit unsigned integer (0-255)
+        image_8bit = (clipped_image * 255).astype(np.uint8)
+
+        # Use Pillow to save the 8-bit NumPy array as a PNG
+        pil_image = Image.fromarray(image_8bit, 'RGBA') # Specify RGBA mode
+        pil_image.save(output_file, format='PNG')
+        
+        return True
+    
+    except Exception as e:
+        print(f"Error processing {input_file}: {e}")
+        return False
+
+
 def find_cubemap_files(directory="."):
     """
     Scans the specified directory for files matching the cubemap face keywords.
@@ -131,8 +178,8 @@ def find_cubemap_files(directory="."):
         'down': ['down', 'dn'],     
     }
     REQUIRED_FACES = set(FACE_KEYWORDS.keys())
-    # UPDATED: Removed '.exr'
-    IMAGE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr') 
+    # UPDATED: Added '.exr' back
+    IMAGE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr', '.exr') 
     VMT_EXTENSION = ('.vmt',)
     ALL_EXTENSIONS = IMAGE_EXTENSIONS + VMT_EXTENSION
 
@@ -332,9 +379,14 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         os.makedirs(temp_dir)
         print(f"Created output directory: {temp_dir}")
 
-    # --- 1. Conversion Stage (VTF to PNG) ---
+    # --- 1. Conversion Stage (VTF and EXR to temporary PNG) ---
     for face, path in filenames_map.items():
-        if path.lower().endswith('.vtf'):
+        path_lower = path.lower()
+        base_name = os.path.splitext(os.path.basename(path))[0]
+        png_filename = base_name + ".temp_converted.png" 
+        png_path = os.path.join(temp_dir, png_filename)
+
+        if path_lower.endswith('.vtf'):
             try:
                 png_path = convert_vtf_to_png(path, temp_dir) 
                 png_paths_map[face] = png_path
@@ -344,23 +396,33 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
                     try: os.remove(f)
                     except: pass
                 return False
+        
+        elif path_lower.endswith('.exr'):
+            if not EXR_SUPPORT_ENABLED:
+                print(f"\nFATAL ERROR: Cannot convert EXR file '{os.path.basename(path)}'.")
+                print("The 'openexr-numpy' library is missing.")
+                return False
+            
+            print(f"Converting '{os.path.basename(path)}' (EXR) to PNG...")
+            if convert_exr_to_png(path, png_path):
+                png_paths_map[face] = png_path
+                temp_files.append(png_path)
+                print(f"  -> Saved temporary file: {os.path.basename(png_path)}")
+            else:
+                print(f"Error converting EXR file '{path}'. Stopping.")
+                return False
+
         else:
+            # All other formats (PNG, JPG, TGA, HDR, etc.) are loaded directly by Pillow in step 2
             png_paths_map[face] = path
 
 
     # --- 2. Load Images and Determine Face Size ---
     try:
-        # Check for vtf2img dependency error if it happened but wasn't caught above
-        if 'vtf2img' in sys.modules and 'Parser' in sys.modules['vtf2img'].__dict__:
-             pass # All good
-        elif any(path.lower().endswith('.vtf') for path in filenames_map.values()):
-             print("\nFATAL ERROR: VTF conversion required but 'vtf2img' library is missing or failed to initialize.")
-             return False
-             
-        # Load all images
+        # Load all images (Pillow will handle the final and temp PNGs)
         images = {}
         for face, path in png_paths_map.items():
-            # Standard Pillow Loading for all formats (PNG, JPG, HDR, etc.)
+            # Pillow handles PNG, JPG, TGA, HDR, and the converted PNGs.
             img = Image.open(path).convert("RGBA")
             images[face] = img
 

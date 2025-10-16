@@ -1,2 +1,4 @@
 Pillow
 vtf2img
+numpy
+openexr-numpy
