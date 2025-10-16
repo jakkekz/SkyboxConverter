@@ -277,7 +277,7 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
     
     # --- 1. Standard Skybox VMAT Prompt ---
     try:
-        choice_skybox = input("Do you want to create a Skybox Material? (Y/N): ").strip().lower()
+        choice_skybox = input("Do you want to create a Standard Skybox Material? (Y/N): ").strip().lower()
         if choice_skybox in ['yes', 'y']:
             generate_vmat_content_and_save(skybox_vmat_path, LDR_VMAT_CONTENT, "Standard Skybox")
             saved_count += 1
@@ -299,52 +299,57 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
         
     print("-" * 50)
     if saved_count > 0:
-        print(f"Completed: Created {saved_count} VMAT file(s)".format(saved_count))
+        print(f"Completed: Created {saved_count} VMAT file(s)")
     else:
         print("VMAT creation completely skipped.")
     
     print("=" * 50)
 
 
-def clean_up_vtf_and_vmt(filenames_map, directory):
+def clean_up_source_files(filenames_map, directory):
     """
-    Asks the user if they want to delete the original VTF and VMT files used.
+    Asks the user if they want to delete the original source files (VTF, VMT, EXR, PNG, JPG, etc.) used.
     """
-    vtf_files_to_delete = []
+    files_to_delete = []
     
+    IMAGE_SOURCE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr', '.exr') 
+
     for face, path in filenames_map.items():
-        if path.lower().endswith(('.vtf', '.vmt')): # Include VMTs for cleanup check
-            vtf_files_to_delete.append(path)
+        path_lower = path.lower()
+        
+        # 1. Add all original image files
+        if path_lower.endswith(IMAGE_SOURCE_EXTENSIONS):
+            files_to_delete.append(path)
             
-            # If the source was VTF, also check for a paired VMT file
-            if path.lower().endswith('.vtf'):
-                base_name = os.path.splitext(os.path.basename(path))[0]
-                vmt_path = os.path.join(directory, base_name + '.vmt')
-                if os.path.exists(vmt_path):
-                    vtf_files_to_delete.append(vmt_path)
+        # 2. Add associated VMT files if the source was VTF
+        if path_lower.endswith('.vtf'):
+            base_name = os.path.splitext(os.path.basename(path))[0]
+            vmt_path = os.path.join(directory, base_name + '.vmt')
+            if os.path.exists(vmt_path):
+                files_to_delete.append(vmt_path)
 
-    vtf_files_to_delete = sorted(list(set(vtf_files_to_delete)))
+    files_to_delete = sorted(list(set(files_to_delete)))
 
-    if not vtf_files_to_delete:
-        print("\nNo original .vtf or associated .vmt files were used/found for cleanup.")
+    if not files_to_delete:
+        print("\nNo original source image (.vtf, .png, .exr, etc.) or associated .vmt files were used/found for cleanup.")
         return
 
     print("\n" + "=" * 50)
     print("Cleanup Phase: Delete Original Source Files")
     print("=" * 50)
-    print("The following original source files were used (or are related VMTs) and can be deleted:")
-    for f in vtf_files_to_delete:
+    print("The following original source files were used and can be deleted:")
+    for f in files_to_delete:
         print(f" - {os.path.basename(f)}")
 
     try:
-        choice = input("Do you want to delete source vmt/vtf files? (Y/N): ").strip().lower()
+        choice = input("Do you want to delete ALL the source files listed above? (Y/N): ").strip().lower()
     except Exception:
         print("\nCleanup skipped: Non-interactive session detected or input error.")
         return
 
     if choice in ['yes', 'y']:
         deleted_count = 0
-        for f in vtf_files_to_delete:
+        for f in files_to_delete:
             try:
                 os.remove(f)
                 print(f"   -> Deleted: {os.path.basename(f)}")
@@ -374,8 +379,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     png_paths_map = {}
     temp_files = []
     
-    # Check if the primary input type is EXR (based on the first file)
-    # If all files are EXR, use the EXR-specific layout and rotations.
+    # Check if the primary input type is EXR (based on all files having the .exr extension)
     is_exr_input = all(path.lower().endswith('.exr') for path in filenames_map.values())
     
     print(f"Detected input type: {'EXR (Applying special rotation/swap)' if is_exr_input else 'Standard (Applying default rotation/swap)'}")
@@ -495,16 +499,17 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         # Apply specific rotations ONLY if EXR input is detected
         if is_exr_input:
             rotation_degrees = 0
+            # Note: PIL's rotate function uses a counter-clockwise angle. 
+            # Clockwise (positive rotation) requires a negative angle in PIL.
+            
             if source_image_name in ('front', 'up', 'down'):
-                # front one should be rotated 90 degrees
-                # top one should be rotated 90 degrees
-                # bottom one 90 degrees
-                rotation_degrees = -90 # Positive rotation is clockwise, PIL uses negative for clockwise
+                # front, top, bottom should be rotated 90 degrees clockwise
+                rotation_degrees = -90 
             elif source_image_name == 'right' and slot_name == 'front_slot':
-                # right goes in the place of front and rotates 180 degrees
+                # right goes to front's place and rotates 180 degrees
                 rotation_degrees = 180
             elif source_image_name == 'left' and slot_name == 'right_slot':
-                # left goes in the place of right and rotates 180 degrees
+                # left goes to right's place and rotates 180 degrees
                 rotation_degrees = 180
             elif source_image_name == 'back':
                 # back stays the same (no rotation)
@@ -562,9 +567,10 @@ if __name__ == "__main__":
         # Calls the function that handles the VMAT choices
         create_vmat_file_optionally(FINAL_SKYBOX_VMAT_PATH, FINAL_MOONDOME_VMAT_PATH)
         
-    # 4. Optional VMT/VTF cleanup after VMAT creation
+    # 4. Optional source file cleanup after VMAT creation
     if success:
-        clean_up_vtf_and_vmt(file_map, INPUT_DIRECTORY)
+        # RENAMED: from clean_up_vtf_and_vmt to clean_up_source_files
+        clean_up_source_files(file_map, INPUT_DIRECTORY)
         
     # 5. Final Confirmation and Auto-Exit (Only shows SUCCESS if stitching was successful)
     print("\n" + "#" * 50)
