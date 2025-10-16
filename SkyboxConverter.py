@@ -477,13 +477,13 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     }
 
     # EXR Specific Transforms: Apply the necessary swaps and rotations (in PIL's CCW degrees)
-    # This assumes a typical EXR cubemap render needs specific orientation fixes for the Valve engine.
     EXR_TRANSFORMS = {
         # Target Slot: (Source Face, PIL Rotation CCW)
-        'up':    ('up', 180),      # Up face to Up slot, 180 deg flip
+        # UPDATED: 'up' face now rotates 90 degrees CCW (was 180)
+        'up':    ('up', 90),       # Up face to Up slot, 90 deg CCW
         'down':  ('down', 180),    # Down face to Down slot, 180 deg flip
         'left':  ('back', 0),      # Back face SWAPS to Left slot, 0 deg
-        'front': ('right', -90),   # Right face SWAPS to Front slot, 90 deg CW
+        'front': ('right', -90),   # Right face SWAPS to Front slot, 90 deg CW (-90 CCW)
         'right': ('left', 90),     # Left face SWAPS to Right slot, 90 deg CCW
         'back':  ('front', 180),   # Front face SWAPS to Back slot, 180 deg flip
     }
