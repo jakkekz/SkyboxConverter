@@ -382,7 +382,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     # Check if the primary input type is EXR (based on all files having the .exr extension)
     is_exr_input = all(path.lower().endswith('.exr') for path in filenames_map.values())
     
-    print(f"Detected input type: {'EXR (Applying special rotation/swap)' if is_exr_input else 'Standard (Applying default rotation/swap)'}")
+    print(f"Detected input type: {'EXR (Applying specialized transforms)' if is_exr_input else 'Standard (Applying default transforms)'}")
 
     # --- 0. Ensure Output Directory Exists ---
     if not os.path.exists(temp_dir):
@@ -453,81 +453,64 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
             except: pass
         return False
 
-
-    # --- 3. Define the new positions and Rotations ---
-    # Default S1 to S2 Required Swap (Used for VTF, PNG, JPG, etc.)
-    default_layout = {
-        'top_slot':    'up',
-        'bottom_slot': 'down',
-        'left_slot':   'back',  
-        'right_slot':  'front', 
-        'front_slot':  'right', 
-        'back_slot':   'left',  
-    }
     
-    # EXR Specific Swap (based on user request)
-    exr_layout = {
-        'top_slot':    'up',
-        'bottom_slot': 'down',
-        'left_slot':   'back',  # back stays the same (goes to left slot)
-        'right_slot':  'left',  # left goes to the place of right
-        'front_slot':  'right', # right goes to the place of front
-        'back_slot':   'front', # front goes to the place of back
+    # --- 3. Define Transformations and Slots ---
+
+    # Defines the coordinates of the 6 slots in the final 4x3 image
+    COORDS = {
+        'up':    (face_width * 1, face_height * 0),
+        'left':  (face_width * 0, face_height * 1),
+        'front': (face_width * 1, face_height * 1),
+        'right': (face_width * 2, face_height * 1),
+        'back':  (face_width * 3, face_height * 1),
+        'down':  (face_width * 1, face_height * 2),
     }
+
+    # Standard/Default Transforms: Source face maps to its namesake slot, no rotation.
+    PNG_VTF_TRANSFORMS = {
+        'up':    ('up', 0),
+        'down':  ('down', 0),
+        'left':  ('left', 0),
+        'right': ('right', 0),
+        'front': ('front', 0),
+        'back':  ('back', 0),
+    }
+
+    # EXR Specific Transforms: Apply the necessary swaps and rotations (in PIL's CCW degrees)
+    # This assumes a typical EXR cubemap render needs specific orientation fixes for the Valve engine.
+    EXR_TRANSFORMS = {
+        # Target Slot: (Source Face, PIL Rotation CCW)
+        'up':    ('up', 180),      # Up face to Up slot, 180 deg flip
+        'down':  ('down', 180),    # Down face to Down slot, 180 deg flip
+        'left':  ('back', 0),      # Back face SWAPS to Left slot, 0 deg
+        'front': ('right', -90),   # Right face SWAPS to Front slot, 90 deg CW
+        'right': ('left', 90),     # Left face SWAPS to Right slot, 90 deg CCW
+        'back':  ('front', 180),   # Front face SWAPS to Back slot, 180 deg flip
+    }
+
+    # Determine which transform set to use
+    transform_map = EXR_TRANSFORMS if is_exr_input else PNG_VTF_TRANSFORMS
     
-    layout_map = exr_layout if is_exr_input else default_layout
-
-
     # --- 4. Create the canvas and Paste images ---
     final_width = face_width * 4
     final_height = face_height * 3
     final_image = Image.new('RGBA', (final_width, final_height), (0, 0, 0, 0))
 
-    coords = {
-        'top_slot':    (face_width * 1, face_height * 0),
-        'left_slot':   (face_width * 0, face_height * 1),
-        'front_slot':  (face_width * 1, face_height * 1),
-        'right_slot':  (face_width * 2, face_height * 1),
-        'back_slot':   (face_width * 3, face_height * 1),
-        'bottom_slot': (face_width * 1, face_height * 2),
-    }
-
     print("\nStitching images into the new layout...")
-    for slot_name, source_image_name in layout_map.items():
-        image_to_paste = images[source_image_name]
-        
-        # Apply specific rotations ONLY if EXR input is detected
-        if is_exr_input:
-            rotation_degrees = 0
-            # Note: PIL's rotate function uses a counter-clockwise angle. 
-            # Clockwise (positive rotation) requires a negative angle in PIL.
-            
-            if source_image_name in ('front', 'up', 'down'):
-                # front, top, bottom should be rotated 90 degrees clockwise
-                rotation_degrees = -90 
-            elif source_image_name == 'right' and slot_name == 'front_slot':
-                # right goes to front's place and rotates 180 degrees
-                rotation_degrees = 180
-            elif source_image_name == 'left' and slot_name == 'right_slot':
-                # left goes to right's place and rotates 180 degrees
-                rotation_degrees = 180
-            elif source_image_name == 'back':
-                # back stays the same (no rotation)
-                rotation_degrees = 0
+    # Loop over the TARGET SLOTS ('up', 'left', 'front', 'right', 'back', 'down')
+    for target_slot, (source_face, rotation_degrees) in transform_map.items():
+        image_to_paste = images[source_face] # Get the image object from the source face name
 
-            if rotation_degrees != 0:
-                # Rotate the image before pasting (expand=False to maintain size)
-                image_to_paste = image_to_paste.rotate(rotation_degrees, expand=False)
-                print(f"Pasting image from source '{source_image_name}' (Rotated {abs(rotation_degrees)}°) into output '{slot_name}' slot...")
-            else:
-                print(f"Pasting image from source '{source_image_name}' (No Rotation) into output '{slot_name}' slot...")
-
+        if rotation_degrees != 0:
+            # Rotate the image before pasting. PIL rotation is CCW (positive), so -90 is 90 CW.
+            image_to_paste = image_to_paste.rotate(rotation_degrees, expand=False)
+            print(f"Pasting source '{source_face}' (Rotated {abs(rotation_degrees)}°) into target '{target_slot}' slot...")
         else:
-            # Default behavior (no extra rotation/swapping needed beyond the base layout)
-            print(f"Pasting image from source '{source_image_name}' into output '{slot_name}' slot at {coords[slot_name]}...")
+            print(f"Pasting source '{source_face}' (No Rotation/Swap) into target '{target_slot}' slot...")
 
-        position = coords[slot_name]
+        position = COORDS[target_slot]
         final_image.paste(image_to_paste, position)
+
 
     # --- 5. Save the final image and Clean up ---
     final_image.save(output_file_path, "PNG")
@@ -569,7 +552,7 @@ if __name__ == "__main__":
         
     # 4. Optional source file cleanup after VMAT creation
     if success:
-        # RENAMED: from clean_up_vtf_and_vmt to clean_up_source_files
+        # Includes .exr, .png, .vtf, .jpg, etc.
         clean_up_source_files(file_map, INPUT_DIRECTORY)
         
     # 5. Final Confirmation and Auto-Exit (Only shows SUCCESS if stitching was successful)
