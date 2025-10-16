@@ -24,12 +24,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
+          # Create a directory for PyInstaller hooks
+          mkdir pyinstaller_hooks
+          
+      - name: Create PIL Hook File
+        run: |
+          # The hook-PIL.py content is read from the checked-out file and placed in the hooks directory
+          cp hook-PIL.py pyinstaller_hooks/hook-PIL.py
 
       - name: Build skyboxconverter.py (One-File)
-        # Includes the icon, --onefile, and the necessary --hidden-import for vtf2img.
-        # UPDATED: Using --collect-all 'Pillow' (case-sensitive package name) 
-        # AND explicitly collecting the imageio-openexr dependency.
-        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --collect-all 'Pillow' --collect-all 'imageio-openexr' --name SkyboxConverter --icon=icon.ico
+        # Uses the --additional-hooks-dir flag to find the custom PIL hook
+        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --additional-hooks-dir pyinstaller_hooks --collect-all 'imageio-openexr' --name SkyboxConverter --icon=icon.ico
         
       - name: Upload artifact (Single EXE)
         uses: actions/upload-artifact@v4
