@@ -26,6 +26,14 @@ except NameError:
     print("Please install it using: pip install Pillow")
     sys.exit(1)
 
+# --- EXR Support Library ---
+try:
+    # We require openexr for .exr file support
+    import openexr
+except ImportError:
+    # Note: openexr can be complex to install, this warning is useful
+    print("Warning: The 'openexr' library is not installed. .exr file support may be unavailable.")
+    
 # --- CONFIGURATION (UPDATED) ---
 OUTPUT_DIR = "skybox" 
 FINAL_OUTPUT_FILENAME = "skybox_jimi.png"
@@ -123,7 +131,6 @@ def find_cubemap_files(directory="."):
     """
     Scans the specified directory for files matching the cubemap face keywords.
     Prints the names of any missing required face images.
-    (This function is unchanged.)
     """
     FACE_KEYWORDS = {
         'back': ['back', 'bk'],
@@ -134,7 +141,8 @@ def find_cubemap_files(directory="."):
         'down': ['down', 'dn'],     
     }
     REQUIRED_FACES = set(FACE_KEYWORDS.keys())
-    IMAGE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr')
+    # UPDATED: Added '.exr' to supported image extensions
+    IMAGE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr', '.exr') 
     VMT_EXTENSION = ('.vmt',)
     ALL_EXTENSIONS = IMAGE_EXTENSIONS + VMT_EXTENSION
 
@@ -185,7 +193,6 @@ def find_cubemap_files(directory="."):
 def convert_vtf_to_png(vtf_path, output_dir):
     """
     Converts a single VTF file to a PNG file, saving it in the specified output_dir.
-    (This function is unchanged.)
     """
     base_name = os.path.basename(vtf_path)
     png_filename = os.path.splitext(base_name)[0] + ".temp_converted.png" 
@@ -265,18 +272,19 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
 def clean_up_vtf_and_vmt(filenames_map, directory):
     """
     Asks the user if they want to delete the original VTF and VMT files used.
-    (This function is unchanged.)
     """
     vtf_files_to_delete = []
     
     for face, path in filenames_map.items():
-        if path.lower().endswith('.vtf'):
+        if path.lower().endswith(('.vtf', '.vmt')): # Include VMTs for cleanup check
             vtf_files_to_delete.append(path)
             
-            base_name = os.path.splitext(os.path.basename(path))[0]
-            vmt_path = os.path.join(directory, base_name + '.vmt')
-            if os.path.exists(vmt_path):
-                vtf_files_to_delete.append(vmt_path)
+            # If the source was VTF, also check for a paired VMT file
+            if path.lower().endswith('.vtf'):
+                base_name = os.path.splitext(os.path.basename(path))[0]
+                vmt_path = os.path.join(directory, base_name + '.vmt')
+                if os.path.exists(vmt_path):
+                    vtf_files_to_delete.append(vmt_path)
 
     vtf_files_to_delete = sorted(list(set(vtf_files_to_delete)))
 
@@ -316,7 +324,6 @@ def clean_up_vtf_and_vmt(filenames_map, directory):
 def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     """
     Performs file conversion, stitching, rotation, and left/right swap.
-    (This function is unchanged.)
     """
     print("-" * 50)
     print("Starting Cubemap Rotated Stitcher")
@@ -360,6 +367,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
              print("\nFATAL ERROR: VTF conversion required but 'vtf2img' library is missing or failed to initialize.")
              return False
              
+        # Load all images using Pillow (which handles PNG, JPG, TGA, HDR, and now EXR via openexr)
         images = {face: Image.open(path).convert("RGBA") for face, path in png_paths_map.items()}
         face_width, face_height = images['front'].size
         print(f"\nDetected face size: {face_width}x{face_height}")
@@ -463,4 +471,3 @@ if __name__ == "__main__":
     print("Closing script in 3 seconds...")
     time.sleep(3)
     sys.exit()
-
