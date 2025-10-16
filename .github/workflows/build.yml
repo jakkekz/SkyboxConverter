@@ -24,17 +24,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-          # Create a directory for PyInstaller hooks
-          mkdir pyinstaller_hooks
-          
-      - name: Create PIL Hook File
-        run: |
-          # The hook-PIL.py content is read from the checked-out file and placed in the hooks directory
-          cp hook-PIL.py pyinstaller_hooks/hook-PIL.py
 
       - name: Build skyboxconverter.py (One-File)
-        # Uses the --additional-hooks-dir flag to find the custom PIL hook
-        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --additional-hooks-dir pyinstaller_hooks --collect-all 'imageio-openexr' --name SkyboxConverter --icon=icon.ico
+        # NEW: Using --collect-binaries and --collect-data to aggressively force-bundle the core PIL/Pillow DLLs/data, 
+        # which is the most common fix for 'No module named 'PIL''.
+        # Also forcing collection of the imageio base package.
+        run: pyinstaller skyboxconverter.py --onefile --hidden-import vtf2img --collect-binaries PIL --collect-data PIL --collect-all imageio --collect-all imageio-openexr --name SkyboxConverter --icon=icon.ico
         
       - name: Upload artifact (Single EXE)
         uses: actions/upload-artifact@v4
