@@ -1,5 +1,3 @@
-# The core conversion logic remains the same. The VMAT generation and configuration are updated.
-
 from PIL import Image
 import os
 import sys
@@ -7,13 +5,25 @@ import glob
 import time 
 import textwrap
 
+# --- PyInstaller Hook for vtf2img ---
+# This block attempts to import the hidden dependency 'py_vtf' when the script
+# is running as a frozen executable (compiled by PyInstaller). This is a common
+# pattern to ensure native libraries for packages like vtf2img are included.
+if getattr(sys, 'frozen', False):
+    try:
+        import py_vtf
+        print("PyInstaller Hook: py_vtf dependency loaded.")
+    except ImportError:
+        print("PyInstaller Hook: Warning, could not load py_vtf (might be fine if already bundled).")
+# -----------------------------------
+
 # --- VTR to Image Conversion Library ---
 try:
     from vtf2img import Parser
 except ImportError:
     print("Error: The 'vtf2img' library is required for VTF conversion.")
     print("Please install it using: pip install vtf2img")
-    sys.exit(1) # Exit immediately if vtf2img is missing as it's a primary function
+    sys.exit(1)
 
 # --- Image Stitching Library ---
 try:
@@ -37,8 +47,8 @@ except ImportError:
 # --- CONFIGURATION ---
 OUTPUT_DIR = "skybox" 
 FINAL_OUTPUT_FILENAME = "skybox_jimi.png"
-FINAL_SKYBOX_VMAT_FILENAME = "skybox_jimi.vmat" # Standard Skybox VMAT
-FINAL_MOONDOME_VMAT_FILENAME = "moondome_jimi.vmat" # Moondome VMAT
+FINAL_SKYBOX_VMAT_FILENAME = "skybox_jimi.vmat"
+FINAL_MOONDOME_VMAT_FILENAME = "moondome_jimi.vmat"
 INPUT_DIRECTORY = "." 
 # Path for SkyTexture inside the VMAT (must use engine paths)
 SKYTEXTURE_PATH = f"materials/{OUTPUT_DIR}/{FINAL_OUTPUT_FILENAME}"
@@ -137,7 +147,7 @@ def convert_exr_to_png(input_file, output_file):
 
         # Handle channels (convert to RGBA)
         if image_float.shape[2] == 4:
-            pass # Already RGBA
+            pass
         elif image_float.shape[2] == 3:
             # Add an alpha channel of 1s if only RGB is present
             alpha = np.ones((image_float.shape[0], image_float.shape[1], 1), dtype=image_float.dtype)
@@ -147,14 +157,13 @@ def convert_exr_to_png(input_file, output_file):
 
 
         # Perform simple tone-mapping/normalization for LDR PNG (0-255).
-        # We use a simple clip/scale for LDR conversion.
         clipped_image = np.clip(image_float, 0.0, 1.0) # Clips to 0-1 range
 
         # Convert to 8-bit unsigned integer (0-255)
         image_8bit = (clipped_image * 255).astype(np.uint8)
 
         # Use Pillow to save the 8-bit NumPy array as a PNG
-        pil_image = Image.fromarray(image_8bit, 'RGBA') # Specify RGBA mode
+        pil_image = Image.fromarray(image_8bit, 'RGBA')
         pil_image.save(output_file, format='PNG')
         
         return True
@@ -178,7 +187,6 @@ def find_cubemap_files(directory="."):
         'down': ['down', 'dn'],     
     }
     REQUIRED_FACES = set(FACE_KEYWORDS.keys())
-    # UPDATED: Added '.exr' back
     IMAGE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr', '.exr') 
     VMT_EXTENSION = ('.vmt',)
     ALL_EXTENSIONS = IMAGE_EXTENSIONS + VMT_EXTENSION
@@ -246,6 +254,13 @@ def convert_vtf_to_png(vtf_path, output_dir):
         print(f"  -> Saved temporary file: {os.path.basename(png_path)}")
         return png_path
     except Exception as e:
+        # Check for the specific error related to format 3 to give a helpful message
+        if "Unknown image format 3" in str(e):
+             print(f"\nFATAL VTF ERROR: Failed to convert '{base_name}'.")
+             print("This VTF uses a rare compression format (Type 3) that is not supported by the Python library.")
+             print("Please use VTFEdit to manually export this specific file to PNG/TGA before running the script.")
+             raise
+        
         print(f"Error converting VTF file '{vtf_path}': {e}")
         # Re-raise the exception to stop the stitching process
         raise
@@ -398,6 +413,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
 
         if path_lower.endswith('.vtf'):
             try:
+                # The conversion function now has better error handling for format 3
                 png_path = convert_vtf_to_png(path, temp_dir) 
                 png_paths_map[face] = png_path
                 temp_files.append(png_path)
@@ -405,6 +421,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
                 for f in temp_files:
                     try: os.remove(f)
                     except: pass
+                # Error message printed in convert_vtf_to_png
                 return False
         
         elif path_lower.endswith('.exr'):
@@ -479,21 +496,22 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     # EXR Specific Transforms: Apply the necessary swaps and rotations (in PIL's CCW degrees)
     EXR_TRANSFORMS = {
         # Target Slot: (Source Face, PIL Rotation CCW)
-        # UPDATED: 'up' face now rotates 90 degrees CCW (was 180)
-        'up':    ('up', 90),       # Up face to Up slot, 90 deg CCW
+        'up':    ('up', 90),       # Up face to Up slot, 90 deg CCW (Requested update)
         'down':  ('down', 180),    # Down face to Down slot, 180 deg flip
         'left':  ('back', 0),      # Back face SWAPS to Left slot, 0 deg
         'front': ('right', -90),   # Right face SWAPS to Front slot, 90 deg CW (-90 CCW)
         'right': ('left', 90),     # Left face SWAPS to Right slot, 90 deg CCW
-        'back':  ('front', 0),   # Front face SWAPS to Back slot, 180 deg flip
+        'back':  ('front', 180),   # Front face SWAPS to Back slot, 180 deg flip
     }
 
     # Determine which transform set to use
     transform_map = EXR_TRANSFORMS if is_exr_input else PNG_VTF_TRANSFORMS
     
-    # --- 4. Create the canvas and Paste images ---
+    # --- 4. Create the final image and Paste images ---
     final_width = face_width * 4
     final_height = face_height * 3
+    
+    # Create the empty image matrix (the final image)
     final_image = Image.new('RGBA', (final_width, final_height), (0, 0, 0, 0))
 
     print("\nStitching images into the new layout...")
