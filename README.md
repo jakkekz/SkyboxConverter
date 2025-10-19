@@ -1,6 +1,15 @@
 # SkyboxConverter
-Automate the converting of CSGO (or decompiled CS2) skyboxes to a CS2 compatible format.
+Automate the converting of skyboxes to a CS2 compatible format.
 
+These skyboxes are (probably) supported:
+- CSGO
+- HL2
+- L4D & L4D2
+- TF2
+- CS 1.6
+- CSS (bottom face has wrong rotation)
+- Portal 1 & 2
+  
 _Heavily vibe coded with Gemini👌_
 
 <img width="792" height="280" alt="Image" src="https://github.com/user-attachments/assets/33697855-d02f-4757-8356-83c88ecdde8e" />
