@@ -11,9 +11,8 @@ import numpy as np
 if getattr(sys, 'frozen', False):
     try:
         import py_vtf
-        print("PyInstaller Hook: py_vtf dependency loaded.")
     except ImportError:
-        print("PyInstaller Hook: Warning, could not load py_vtf (might be fine if already bundled).")
+        pass
 # -----------------------------------
 
 # --- VTR to Image Conversion Library ---
@@ -41,19 +40,30 @@ try:
 except ImportError:
     print("Warning: The 'openexr-numpy' or 'numpy' library is not installed. .exr file support is unavailable.")
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION (Initial/Default Values) ---
 OUTPUT_DIR = "skybox" 
-FINAL_OUTPUT_FILENAME = "skybox_jimi.png"
-FINAL_SKYBOX_VMAT_FILENAME = "skybox_jimi.vmat"
-FINAL_MOONDOME_VMAT_FILENAME = "moondome_jimi.vmat"
 INPUT_DIRECTORY = "." 
+# The following will be dynamically set in __main__
+FINAL_PREFIX = "skybox_jimi" 
+# --- END CONFIGURATION ---
+
+# These variables are now calculated dynamically at the start of the script's execution
+FINAL_OUTPUT_FILENAME = f"{FINAL_PREFIX}.png"
+FINAL_SKYBOX_VMAT_FILENAME = f"skybox_{FINAL_PREFIX}.vmat"
+FINAL_MOONDOME_VMAT_FILENAME = f"moondome_{FINAL_PREFIX}.vmat"
+
 # Path for SkyTexture inside the VMAT (must use engine paths)
 SKYTEXTURE_PATH = f"materials/{OUTPUT_DIR}/{FINAL_OUTPUT_FILENAME}"
-# --- END CONFIGURATION ---
 
 FINAL_OUTPUT_PATH = os.path.join(OUTPUT_DIR, FINAL_OUTPUT_FILENAME)
 FINAL_SKYBOX_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_SKYBOX_VMAT_FILENAME)
 FINAL_MOONDOME_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_MOONDOME_VMAT_FILENAME)
+
+
+# --- TARGET SLOT DEFINITION (FIXED) ---
+TARGET_SLOTS = ['up', 'left', 'front', 'right', 'back', 'down']
+# --- END TARGET SLOT DEFINITION ---
+
 
 # --- CUSTOMIZABLE TRANSFORMATION CONFIGS ---
 
@@ -75,21 +85,43 @@ EXR_TRANSFORMS = {
 }
 # --- END CUSTOMIZATION HERE FOR .EXR FILES ---
 
-# 2. Configuration for all other formats (VTF, PNG, JPG, etc.)
-# --- RESTORED ORIGINAL ROTATIONS FOR NON-EXR FILES ---
+# 2. Configuration for all other formats (VTF, PNG, JPG, etc.) - Standard 1:1 Cubemap
+# --- CORRECTED STANDARD ROTATIONS FOR NON-EXR FILES (VTF/PNG) ---
 DEFAULT_TRANSFORMS = {
-    # Restores the standard engine rotations and flips for LDR/VTF/PNG sources.
-    'up':      ('up', 0, None),        # Up face: Rotate 180 (transpose(Image.ROTATE_180))
-    'down':    ('down', 0, None),        # Down face: Rotate 180 (transpose(Image.ROTATE_180))
-    'left':    ('back', 0, None),        # Left face: Rotate 90 CCW, then flip Top/Bottom
-    'front': ('right', 0, None),        # Front face: No rotation/flip
-    'right': ('front', 0, None),        # Right face: Rotate 90 CW (-90), then flip Top/Bottom
-    'back':    ('left', 0, None),      # Back face: Rotate 180 (transpose(Image.ROTATE_180))
+    # Standard cubemap projection (VTF/Source) requires a 180-degree rotation on UP/DOWN for 4x3 format.
+    # The image file names must match the target slot name.
+    'up':      ('up', 0, None),
+    'down':    ('down', 0, None),
+    'left':    ('back', 0, None), 
+    'front':   ('right', 0, None),
+    'right':   ('front', 0, None), 
+    'back':    ('left', 0, None),
 }
-# --- END RESTORED ROTATIONS ---
+# --- END CORRECTED ROTATIONS ---
+
+# 3. Configuration for HL2/TF2 Dome Map files (2:1 aspect ratio on horizontal faces)
+# The faces are typically named back, up, rt, ft, lf, dn (or similar).
+# They also require rotation correction for the CS:GO/CS2 format.
+# The up/down faces often use a 1:1 format, but the others are 2:1.
+# This configuration *assumes* the 'up' and 'down' faces are already 1:1 squares
+# or will be handled by the 2:1 to 1:1 conversion (which uses only the top half of the 2:1 image).
+# If the source is a standard TF2 skybox, the faces are often already in the correct orientation 
+# for the 4x3 layout, but require a 180-degree flip on UP/DOWN.
+# NOTE: The 2:1 to 1:1 cropping logic is already in place; this transform only needs to handle rotation.
+HL2_TF2_DOME_TRANSFORMS = {
+    # Typical Source-engine cubemap rotation (up/down flip is required for 4x3 format)
+    'up':      ('up', 0, None),
+    'down':    ('down', 0, None),
+    'left':    ('back', 0, None),
+    'front':   ('right', 0, None),
+    'right':   ('front', 0, None),
+    'back':    ('left', 0, None),
+}
 
 # --- VMAT TEMPLATE (LDR Only) ---
-LDR_VMAT_CONTENT = f"""// THIS FILE IS AUTO-GENERATED (STANDARD SKYBOX)
+def get_ldr_vmat_content(sky_texture_path):
+    """Generates the VMAT content with the correct dynamic texture path."""
+    return f"""// THIS FILE IS AUTO-GENERATED (STANDARD SKYBOX)
 
 Layer0
 {{
@@ -101,7 +133,7 @@ Layer0
     //---- Texture ----
     g_flBrightnessExposureBias "0.000"
     g_flRenderOnlyExposureBias "0.000"
-    SkyTexture "{SKYTEXTURE_PATH}"
+    SkyTexture "{sky_texture_path}"
 
 
     VariableState
@@ -114,7 +146,9 @@ Layer0
 # --------------------
 
 # --- MOONDOME VMAT TEMPLATE (NEW) ---
-MOONDOME_VMAT_CONTENT = f"""// THIS FILE IS AUTO-GENERATED (MOONDOME)
+def get_moondome_vmat_content(sky_texture_path):
+    """Generates the Moondome VMAT content with the correct dynamic texture path."""
+    return f"""// THIS FILE IS AUTO-GENERATED (MOONDOME)
 
 Layer0
 {{
@@ -138,7 +172,7 @@ Layer0
     g_bFogEnabled "1"
 
     //---- Texture ----
-    TextureCubeMap "{SKYTEXTURE_PATH}"
+    TextureCubeMap "{sky_texture_path}"
 
     //---- Texture Address Mode ----
     g_nTextureAddressModeU "0" // Wrap
@@ -201,6 +235,76 @@ def convert_exr_to_png(input_file, output_file):
         print(f"Error processing {input_file}: {e}")
         return False
 
+def determine_skybox_prefix(filenames_map):
+    """
+    Analyzes the found filenames (e.g., 'sky_day01_01up.vtf' or 'sky144bk.vtf') 
+    and determines the common prefix (e.g., 'sky_day01_01' or 'sky144').
+    
+    ***
+    CORRECTED LOGIC: Find the keyword, strip it, and then clean up trailing separators ONLY.
+    ***
+    """
+    if not filenames_map:
+        return "default_skybox"
+
+    # Keywords to strip from the end of the filename (before extension)
+    KEYWORDS = ['up', 'dn', 'bk', 'ft', 'lf', 'rt', 'top', 'down', 'back', 'front', 'left', 'right']
+    
+    prefixes = []
+    
+    for face, full_path in filenames_map.items():
+        # Get the filename without directory or extension
+        filename = os.path.basename(full_path)
+        name_no_ext = os.path.splitext(filename)[0].lower()
+        
+        prefix = name_no_ext
+        found_keyword = False
+        
+        # Strip all keywords from the end
+        for keyword in sorted(KEYWORDS, key=len, reverse=True): # Check long keywords first
+            if name_no_ext.endswith(keyword):
+                # Found the face keyword. Now, strip the keyword.
+                temp_prefix = name_no_ext[:-len(keyword)]
+
+                # Clean up any trailing separators (like _, -, or digits) right before the keyword
+                # This ensures 'sky144_bk' -> 'sky144' and 'sky144bk' -> 'sky144'
+                
+                # Strip non-alphanumeric characters or single digits from the end 
+                # (to catch 'sky_day01_01_' or 'sky144-')
+                
+                # Simple cleanup of trailing non-alphanumeric chars
+                prefix = temp_prefix.rstrip('_-')
+                
+                # Check for single-digit suffixes that might be face identifiers (e.g. up1)
+                # If the remaining part is only digits, it's safer to keep the last digit if it's the only one.
+                # However, for 'sky144bk', we want to keep the '144'. 
+                # The simple rstrip('_-') is the most reliable approach for standard naming conventions.
+                
+                if not prefix: # if stripping resulted in an empty string (e.g., 'up.vtf')
+                    prefix = name_no_ext
+                    
+                found_keyword = True
+                break # Exit the keyword loop once the correct keyword is found
+        
+        if found_keyword and prefix:
+            prefixes.append(prefix)
+        else:
+            # Fallback if no keyword was found (e.g., if the file was just 'sky.png')
+            prefixes.append(name_no_ext) 
+
+    # Find the shortest prefix (which is usually the most correct common part)
+    if not prefixes:
+        return "default_skybox"
+        
+    final_prefix = min(prefixes, key=len)
+    
+    # Simple validation that all other prefixes start with the shortest one
+    for p in prefixes:
+        if not p.startswith(final_prefix):
+            print(f"Warning: Filename prefixes are inconsistent. Using '{final_prefix}'.")
+            break
+            
+    return final_prefix
 
 def find_cubemap_files(directory="."):
     """
@@ -209,11 +313,11 @@ def find_cubemap_files(directory="."):
     """
     FACE_KEYWORDS = {
         'back': ['back', 'bk'],
-        'up':   ['up', 'top'],      
+        'up':   ['up', 'top'],     
         'front':['front', 'ft'],
         'right':['right', 'rt'],
         'left': ['left', 'lf'],
-        'down': ['down', 'dn'],     
+        'down': ['down', 'dn'],    
     }
     REQUIRED_FACES = set(FACE_KEYWORDS.keys())
     IMAGE_EXTENSIONS = ('.vtf', '.png', '.jpg', '.jpeg', '.tga', '.hdr', '.exr') 
@@ -238,10 +342,17 @@ def find_cubemap_files(directory="."):
                     # Check for "skybox" or a similar prefix followed by a keyword
                     fname_lower = os.path.basename(fpath).lower()
                     if any(keyword in fname_lower for keyword in keywords):
-                        found_files[face_name] = fpath
-                        found = True
-                        print(f"Found file for '{face_name}': {os.path.basename(fpath)}")
-                        break
+                        # Ensure a match on the full word or a common abbreviation
+                        for keyword in keywords:
+                            # Simple check for keyword at the end of filename (before extension)
+                            name_no_ext = os.path.splitext(fname_lower)[0]
+                            if name_no_ext.endswith(keyword):
+                                found_files[face_name] = fpath
+                                found = True
+                                print(f"Found file for '{face_name}': {os.path.basename(fpath)}")
+                                break
+                            
+                        if found: break
         
         # VMT check is kept for error reporting, but not used in stitching
         if not found:
@@ -280,7 +391,7 @@ def convert_vtf_to_png(vtf_path, output_dir):
         # Ensure image is in RGBA format before saving
         image = image.convert("RGBA")
         image.save(png_path, "PNG")
-        print(f"    -> Saved temporary file: {os.path.basename(png_path)}")
+        print(f"     -> Saved temporary file: {os.path.basename(png_path)}")
         return png_path
     except Exception as e:
         # Check for the specific error related to format 3 to give a helpful message
@@ -309,9 +420,10 @@ def generate_vmat_content_and_save(vmat_path, content, material_type):
         print(f"ERROR: Could not write VMAT file to {vmat_path}. Error: {e}")
 
 
-def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
+def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path, sky_texture_path):
     """
     Asks the user which VMAT files they want to create using Y/N prompts, with spacing.
+    Now requires the sky_texture_path to generate content dynamically.
     """
     print("\n" + "=" * 50)
     print("VMAT Generation Phase")
@@ -319,23 +431,27 @@ def create_vmat_file_optionally(skybox_vmat_path, moondome_vmat_path):
     
     saved_count = 0
     
-    # --- 1. Skybox VMAT Prompt (Updated text) ---
+    # Generate content with the resolved path
+    ldr_content = get_ldr_vmat_content(sky_texture_path)
+    moondome_content = get_moondome_vmat_content(sky_texture_path)
+
+    # --- 1. Skybox VMAT Prompt ---
     try:
         choice_skybox = input("Do you want to create a Skybox Material? (Y/N): ").strip().lower()
         if choice_skybox in ['yes', 'y']:
-            generate_vmat_content_and_save(skybox_vmat_path, LDR_VMAT_CONTENT, "Skybox")
+            generate_vmat_content_and_save(skybox_vmat_path, ldr_content, "Skybox")
             saved_count += 1
         else:
             print("Skybox VMAT creation skipped.")
     except Exception:
         print("Skybox VMAT creation skipped due to input error.")
 
-    # --- 2. Moondome VMAT Prompt (Added blank line before this prompt) ---
+    # --- 2. Moondome VMAT Prompt ---
     print("") # Added blank line for spacing
     try:
         choice_moondome = input("Do you want to create a Moondome Material? (Y/N): ").strip().lower()
         if choice_moondome in ['yes', 'y']:
-            generate_vmat_content_and_save(moondome_vmat_path, MOONDOME_VMAT_CONTENT, "Moondome")
+            generate_vmat_content_and_save(moondome_vmat_path, moondome_content, "Moondome")
             saved_count += 1
         else:
             print("Moondome VMAT creation skipped.")
@@ -409,17 +525,17 @@ def clean_up_source_files(filenames_map, directory):
         print(f"\nCleanup complete. {deleted_count} source materials were removed.")
     else:
         print("\nCleanup skipped. Original source materials were preserved.")
-    
+        
     print("=" * 50)
 
 
 def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     """
     Performs file conversion, stitching, and applies source format-specific 
-    rotations/placements based on the EXR_TRANSFORMS and DEFAULT_TRANSFORMS configs.
+    rotations/placements.
+    Supports standard 1:1 faces (CS:GO/CS2) and 2:1 horizontal faces (TF2/HL2).
     """
     print("-" * 50)
-    # --- Updated Stitcher Title ---
     print("Starting Skybox Converter")
     print("-" * 50)
 
@@ -429,7 +545,6 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
 
     png_paths_map = {}
     temp_files = []
-    # New: Store the source format for conditional transformation later
     face_source_info = {}
     
     # --- 0. Ensure Output Directory Exists ---
@@ -440,15 +555,18 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
     # --- 1. Conversion Stage (VTF and EXR to temporary PNG) ---
     for face, path in filenames_map.items():
         path_lower = path.lower()
-        
-        # Determine the source format type
         source_format_type = 'default'
         
         if path_lower.endswith('.vtf'):
             try:
-                png_path = convert_vtf_to_png(path, temp_dir) 
-                png_paths_map[face] = png_path
-                temp_files.append(png_path)
+                # Use a specific temp name for converted VTF files
+                png_path = os.path.join(temp_dir, os.path.splitext(os.path.basename(path))[0] + ".temp_converted.png")
+                
+                # Use the convert function to get the path
+                converted_path = convert_vtf_to_png(path, temp_dir) 
+                
+                png_paths_map[face] = converted_path
+                temp_files.append(converted_path)
             except Exception:
                 for f in temp_files:
                     try: os.remove(f)
@@ -470,7 +588,7 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
             if convert_exr_to_png(path, png_path):
                 png_paths_map[face] = png_path
                 temp_files.append(png_path)
-                print(f"    -> Saved temporary file: {os.path.basename(png_path)}")
+                print(f"     -> Saved temporary file: {os.path.basename(png_path)}")
             else:
                 print(f"Error converting EXR file '{path}'. Stopping.")
                 return False
@@ -483,22 +601,47 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         face_source_info[face] = source_format_type
 
 
-    # --- 2. Load Images and Determine Face Size ---
+    # --- 2. Load Images and Determine Face Size and Ratio (CORRECTED LOGIC) ---
     try:
         images = {}
+        valid_sizes = []
+        MIN_SIZE = 64 # Ignore extremely small images (like 4x4 placeholders)
+
+        # Load all images first
         for face, path in png_paths_map.items():
             img = Image.open(path).convert("RGBA")
             images[face] = img
-
-        
-        face_width, face_height = images['front'].size
-        print(f"\nDetected face size: {face_width}x{face_height}")
-
-        for face, img in images.items():
             w, h = img.size
-            if w != face_width or h != face_height:
-                print(f"Error: Face '{face}' size mismatch ({w}x{h}). All faces must match ({face_width}x{face_height}).")
-                raise ValueError("Image size mismatch.")
+            if w >= MIN_SIZE and h >= MIN_SIZE:
+                valid_sizes.append((w, h))
+
+        if not valid_sizes:
+            print("Error: Could not find any skybox face larger than 64x64. Check source files.")
+            raise ValueError("No valid image size found.")
+
+        # Find the most common/largest size, or just use the largest found size
+        face_width, face_height = images['front'].size
+        
+        # Fallback in case 'front' is also a placeholder
+        if face_width < MIN_SIZE or face_height < MIN_SIZE:
+            face_width, face_height = max(valid_sizes, key=lambda x: x[0] * x[1])
+            print(f"Warning: 'front' face was a placeholder. Using largest face size found: {face_width}x{face_height}")
+
+
+        print(f"\nDetected base face size: {face_width}x{face_height}")
+
+        # --- Aspect Ratio Check for TF2/HL2 Mode ---
+        is_dome_map = False
+        ratio = face_width / face_height
+        
+        if 1.9 < ratio < 2.1: # Allow for float tolerance around 2.0
+            is_dome_map = True
+            print("💡 Detected 2:1 aspect ratio on base size (TF2/HL2 Dome Map format).")
+        elif 0.9 < ratio < 1.1: # Allow for float tolerance around 1.0
+            print("Detected 1:1 aspect ratio on faces (CS:GO/CS2 Cube Map format).")
+        else:
+            print(f"Warning: Unusual aspect ratio ({ratio:.2f}). Proceeding with detected size.")
+            
 
     except (FileNotFoundError, ValueError, Exception) as e:
         print(f"An error occurred during image loading/sizing: {e}")
@@ -506,59 +649,79 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
             try: os.remove(f)
             except: pass
         return False
-
+        
+    # --- Base Unit Size Definition ---
+    if is_dome_map:
+        base_unit_size = face_height # Face is 2H x H. Base unit is H.
+    else:
+        base_unit_size = face_width 
     
-    # --- 3. Define the Global Slot Coordinates ---
+    # Redefine final image parameters using the 1:1 base unit size.
+    final_width = base_unit_size * 4
+    final_height = base_unit_size * 3
 
     # Defines the coordinates of the 6 slots in the final 4x3 image
     COORDS = {
-        'up':      (face_width * 1, face_height * 0),
-        'left':    (face_width * 0, face_height * 1),
-        'front': (face_width * 1, face_height * 1),
-        'right': (face_width * 2, face_height * 1),
-        'back':    (face_width * 3, face_height * 1),
-        'down':    (face_width * 1, face_height * 2),
+        'up':      (base_unit_size * 1, base_unit_size * 0),
+        'left':    (base_unit_size * 0, base_unit_size * 1),
+        'front':   (base_unit_size * 1, base_unit_size * 1),
+        'right':   (base_unit_size * 2, base_unit_size * 1),
+        'back':    (base_unit_size * 3, base_unit_size * 1),
+        'down':    (base_unit_size * 1, base_unit_size * 2),
     }
-    
-    # The list of target slots in the final image
-    TARGET_SLOTS = ['up', 'down', 'left', 'front', 'right', 'back']
 
-
-    # --- 4. Create the final image and Paste images ---
-    final_width = face_width * 4
-    final_height = face_height * 3
-    
-    # Create the empty image matrix (the final image)
+    # Create the empty image matrix (the final image) with black background.
     final_image = Image.new('RGBA', (final_width, final_height), (0, 0, 0, 0))
+    print(f"Final stitched cubemap canvas size: {final_width}x{final_height}")
 
     print("\nStitching images using format-specific rotations and placements...")
     
     # Loop over the TARGET SLOTS 
     for target_slot in TARGET_SLOTS:
-        # Determine which set of transforms to use based on the source image format
-        # We assume the Source Face name is the same as the Target Slot name unless explicitly overridden in the config maps.
         
-        # Check the source format of the image that would normally be in this slot (target_slot)
+        # --- Select Transformation Map based on detected source type ---
+        transform_map = DEFAULT_TRANSFORMS
+        config_name = "DEFAULT_TRANSFORMS"
         source_format = face_source_info.get(target_slot, 'default')
 
         if source_format == 'exr':
             transform_map = EXR_TRANSFORMS
             config_name = "EXR_TRANSFORMS"
-        else:
-            transform_map = DEFAULT_TRANSFORMS
-            config_name = "DEFAULT_TRANSFORMS"
-            
-        # Get the specific transformation rule for this target slot
-        # Format: (Source Face, Rotation Degrees CCW, PIL Flip Constant)
-        source_face, rotation_degrees, flip = transform_map.get(
-            target_slot, 
-            (target_slot, 0, None) # Fallback to no change if slot missing from map
-        )
+        elif is_dome_map and source_format != 'exr': 
+            transform_map = HL2_TF2_DOME_TRANSFORMS
+            config_name = "HL2_TF2_DOME_TRANSFORMS"
+
+        # Get the transformation values from the selected map
+        source_face, rotation_degrees, flip = transform_map.get(target_slot, (target_slot, 0, None))
         
-        # Get the actual image object based on the SOURCE FACE name (which might be swapped)
         image_to_paste = images[source_face] 
-        
         transform_description = []
+
+        # --- 2a. Pre-process and Resize Image for Slot ---
+        
+        # If the image is a placeholder (4x4), skip rotation/resize but still put a black square in the slot.
+        if image_to_paste.size[0] < MIN_SIZE:
+             # Create a completely black square of the correct base size (base_unit_size x base_unit_size)
+             image_to_paste = Image.new('RGBA', (base_unit_size, base_unit_size), (0, 0, 0, 255))
+             transform_description.append("REPLACED 4x4 with Black Square")
+
+        elif is_dome_map and target_slot in ['left', 'front', 'right', 'back']:
+            # Dome Map Horizontal Face (2:1 -> W x H) to 1:1 Slot (H x H), with black bottom
+            target_height = base_unit_size // 2 
+            image_resized = image_to_paste.resize((base_unit_size, target_height), Image.Resampling.LANCZOS)
+            final_face = Image.new('RGBA', (base_unit_size, base_unit_size), (0, 0, 0, 255))
+            final_face.paste(image_resized, (0, 0))
+            image_to_paste = final_face
+            
+            transform_description.append(f"Dome Map (2:1) to 1:1 Top")
+            
+        else:
+            # Standard resize: Scale any other 1:1 image to the correct 1:1 slot size.
+            image_to_paste = image_to_paste.resize((base_unit_size, base_unit_size), Image.Resampling.LANCZOS)
+            transform_description.append("Resized to 1:1 Slot")
+
+
+        # --- 2b. Apply Transformations (Rotation/Flip) ---
 
         # Apply Rotation
         if rotation_degrees != 0:
@@ -566,18 +729,10 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
             transform_description.append(f"Rotated {rotation_degrees}° CCW")
         
         # Apply Flip/Transpose
-        if flip == Image.FLIP_LEFT_RIGHT:
-            image_to_paste = image_to_paste.transpose(Image.FLIP_LEFT_RIGHT)
-            transform_description.append("Flipped Left/Right")
-        elif flip == Image.FLIP_TOP_BOTTOM:
-            image_to_paste = image_to_paste.transpose(Image.FLIP_TOP_BOTTOM)
-            transform_description.append("Flipped Top/Bottom")
-        elif flip == Image.ROTATE_180:
-            image_to_paste = image_to_paste.transpose(Image.ROTATE_180)
-            transform_description.append("Rotated 180°")
-        elif flip is not None:
-             transform_description.append(f"Applied Custom Transpose: {flip}")
-
+        if flip is not None:
+            image_to_paste = image_to_paste.transpose(flip)
+            transform_description.append(f"Applied Transpose: {str(flip).split('.')[-1]}")
+            
         # Log the operation
         desc = f"Source '{source_face}' (Format: {source_format.upper()} - Config: {config_name})"
         if transform_description:
@@ -585,9 +740,9 @@ def stitch_cubemap_rotated(filenames_map, output_file_path, temp_dir):
         
         print(f"Pasting {desc} into target '{target_slot}' slot...")
 
+        # --- 2c. Final Paste ---
         position = COORDS[target_slot]
         final_image.paste(image_to_paste, position)
-
 
     # --- 5. Save the final image and Clean up ---
     final_image.save(output_file_path, "PNG")
@@ -619,20 +774,36 @@ if __name__ == "__main__":
     # 1. Find the 6 required cubemap files by keyword
     file_map = find_cubemap_files(INPUT_DIRECTORY)
     
-    # 2. Convert and stitch the found files
+    # 2. Determine the dynamic prefix
+    DYNAMIC_PREFIX = determine_skybox_prefix(file_map)
+    print(f"\n--- Determined Skybox Prefix: '{DYNAMIC_PREFIX}' ---")
+    
+    # 3. Update all global paths and filenames based on the new prefix
+    # Output file paths
+    FINAL_OUTPUT_FILENAME = f"{DYNAMIC_PREFIX}.png"
+    FINAL_SKYBOX_VMAT_FILENAME = f"skybox_{DYNAMIC_PREFIX}.vmat"
+    FINAL_MOONDOME_VMAT_FILENAME = f"moondome_{DYNAMIC_PREFIX}.vmat"
+    
+    # Engine texture path for VMAT
+    SKYTEXTURE_PATH = f"materials/{OUTPUT_DIR}/{FINAL_OUTPUT_FILENAME}"
+
+    FINAL_OUTPUT_PATH = os.path.join(OUTPUT_DIR, FINAL_OUTPUT_FILENAME)
+    FINAL_SKYBOX_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_SKYBOX_VMAT_FILENAME)
+    FINAL_MOONDOME_VMAT_PATH = os.path.join(OUTPUT_DIR, FINAL_MOONDOME_VMAT_FILENAME)
+    
+    # 4. Convert and stitch the found files
     success = stitch_cubemap_rotated(file_map, FINAL_OUTPUT_PATH, OUTPUT_DIR)
     
-    # 3. Optional VMAT creation after successful stitching
+    # 5. Optional VMAT creation after successful stitching
     if success:
-        # Calls the function that handles the VMAT choices
-        create_vmat_file_optionally(FINAL_SKYBOX_VMAT_PATH, FINAL_MOONDOME_VMAT_PATH)
+        # Calls the function that handles the VMAT choices, passing the dynamic path
+        create_vmat_file_optionally(FINAL_SKYBOX_VMAT_PATH, FINAL_MOONDOME_VMAT_PATH, SKYTEXTURE_PATH)
         
-    # 4. Optional source file cleanup after VMAT creation
+    # 6. Optional source file cleanup after VMAT creation
     if success:
-        # Renamed to include all source image types
         clean_up_source_files(file_map, INPUT_DIRECTORY)
         
-    # 5. Final Confirmation and Auto-Exit (Updated dividers)
+    # 7. Final Confirmation and Auto-Exit
     print("\n" + "=" * 50)
     if success:
         print(f"PROCESS COMPLETE: All output files were created in the '{OUTPUT_DIR}' folder.")
