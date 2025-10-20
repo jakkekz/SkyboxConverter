@@ -1,5 +1,5 @@
 # SkyboxConverter
-Automate the converting of skyboxes to a CS2 compatible format.
+Automate the converting of cubemap skyboxes to a CS2 compatible format.
 
 These skyboxes are (probably) supported:
 - CSGO
